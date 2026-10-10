@@ -1,0 +1,11 @@
+target/
+.idea/
+*.iml
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/members/
+data/development/
+data/meetings/
+data/activities/
+data/backups/

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>党支部工作台</title>
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">党支部管理系统 <span>初稿</span></div>
+    <nav><a class="active" href="/">工作台</a><a href="/members">党员档案</a><a href="/activities">组织生活</a><a href="/meetings">会议纪要</a></nav>
+</header>
+<main class="page">
+    <section class="page-heading"><div><p class="eyebrow">支部概览</p><h1>工作台</h1><p class="muted">集中查看党员档案、组织生活和近期需要处理的事项。</p></div></section>
+    <section class="stats">
+        <div class="stat"><span>党员总数</span><strong th:text="${memberCount}">0</strong><small>当前档案</small></div>
+        <div class="stat"><span>近期提醒</span><strong th:text="${#lists.size(reminders)}">0</strong><small>未来 90 天</small></div>
+        <div class="stat"><span>已建会议</span><strong th:text="${#lists.size(meetings)}">0</strong><small>最近记录</small></div>
+    </section>
+    <section class="grid two-col">
+        <div class="panel"><div class="panel-title"><h2>发展流程提醒</h2><a href="/members">查看档案</a></div>
+            <div th:if="${#lists.isEmpty(reminders)}" class="empty">当前没有未来 90 天内的提醒。</div>
+            <div th:each="item : ${reminders}" class="reminder"><div><b th:text="${item.memberName}">姓名</b><p th:text="${item.message}">提醒内容</p></div><time th:text="${item.dueDate}">日期</time></div>
+        </div>
+        <div class="panel"><div class="panel-title"><h2>最近会议</h2><a href="/meetings">管理会议</a></div>
+            <div th:if="${#lists.isEmpty(meetings)}" class="empty">还没有会议记录。</div>
+            <div th:each="meeting : ${meetings}" class="list-row"><div><b th:text="${meeting.title}">会议名称</b><p th:text="${meeting.location}">地点</p></div><time th:text="${meeting.meetingDate}">日期</time></div>
+        </div>
+    </section>
+    <section class="note"><b>当前版本说明</b><span>流程提醒是初步规则，正式使用前需按现行制度文件和支部实际要求校准。</span></section>
+</main>
+</body>
+</html>

@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: party-management
+  datasource:
+    url: jdbc:sqlite:data/party-management.db
+    driver-class-name: org.sqlite.JDBC
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+  thymeleaf:
+    cache: false
+server:
+  port: 8080
+  address: 127.0.0.1
+  error:
+    include-message: always

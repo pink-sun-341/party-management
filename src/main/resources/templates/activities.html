@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>组织生活</title><link rel="stylesheet" href="/css/app.css"></head>
+<body>
+<header class="topbar"><div class="brand">党支部管理系统 <span>初稿</span></div><nav><a href="/">工作台</a><a href="/members">党员档案</a><a class="active" href="/activities">组织生活</a><a href="/meetings">会议纪要</a></nav></header>
+<main class="page">
+    <section class="page-heading"><div><p class="eyebrow">三会一课与主题党日</p><h1>组织生活</h1><p class="muted">先记录活动台账，签到明细将在下一版接入。</p></div></section>
+    <section class="panel form-panel"><h2>新增活动</h2><form action="/activities" method="post" class="form-grid">
+        <label>活动主题<input name="title" required placeholder="例如：主题党日学习"></label>
+        <label>活动类型<select name="type"><option>支部党员大会</option><option>支部委员会</option><option>党小组会</option><option>党课</option><option>主题党日</option><option>其他活动</option></select></label>
+        <label>活动日期<input type="date" name="activityDate" required></label>
+        <label>地点<input name="location" placeholder="会议室或活动地点"></label>
+        <label>参加人数<input type="number" name="participantCount" min="0" value="0"></label>
+        <div class="form-actions"><button class="button primary" type="submit">保存活动</button></div>
+    </form></section>
+    <section class="panel"><div class="panel-title"><h2>活动台账</h2><span class="muted" th:text="${#lists.size(activities)} + ' 条'">0 条</span></div><div class="table-wrap"><table><thead><tr><th>日期</th><th>活动主题</th><th>类型</th><th>地点</th><th>参加人数</th></tr></thead><tbody><tr th:each="activity : ${activities}"><td th:text="${activity.activityDate}">日期</td><td><b th:text="${activity.title}">主题</b></td><td><span class="tag" th:text="${activity.type}">类型</span></td><td th:text="${activity.location}">地点</td><td th:text="${activity.participantCount}">0</td></tr><tr th:if="${#lists.isEmpty(activities)}"><td colspan="5" class="empty">暂无活动记录。</td></tr></tbody></table></div></section>
+</main>
+</body></html>

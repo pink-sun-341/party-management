@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>会议纪要</title><link rel="stylesheet" href="/css/app.css"></head>
+<body>
+<header class="topbar"><div class="brand">党支部管理系统 <span>初稿</span></div><nav><a href="/">工作台</a><a href="/members">党员档案</a><a href="/activities">组织生活</a><a class="active" href="/meetings">会议纪要</a></nav></header>
+<main class="page">
+    <section class="page-heading"><div><p class="eyebrow">材料归档与 Word 初稿</p><h1>会议纪要</h1><p class="muted">填写会议要素后生成可编辑的 Word 纪要。PPT 上传和内容解析将在下一步接入。</p></div></section>
+    <section class="panel form-panel"><h2>新增会议</h2><form action="/meetings" method="post" class="form-grid">
+        <label>会议名称<input name="title" required placeholder="例如：2026年9月支部委员会"></label>
+        <label>会议日期<input type="date" name="meetingDate" required></label>
+        <label>会议地点<input name="location" placeholder="会议室"></label>
+        <label>主持人<input name="host"></label>
+        <label>记录人<input name="recorder"></label>
+        <label class="wide">会议议题<textarea name="agenda" rows="3" placeholder="每个议题一行"></textarea></label>
+        <label class="wide">讨论情况<textarea name="discussion" rows="4" placeholder="记录主要讨论内容"></textarea></label>
+        <label class="wide">形成决议<textarea name="decisions" rows="4" placeholder="记录形成的决定和后续任务"></textarea></label>
+        <div class="form-actions"><button class="button primary" type="submit">保存会议</button></div>
+    </form></section>
+    <section class="panel"><div class="panel-title"><h2>会议记录</h2><span class="muted" th:text="${#lists.size(meetings)} + ' 条'">0 条</span></div><div class="table-wrap"><table><thead><tr><th>日期</th><th>会议名称</th><th>地点</th><th>主持人</th><th>操作</th></tr></thead><tbody><tr th:each="meeting : ${meetings}"><td th:text="${meeting.meetingDate}">日期</td><td><b th:text="${meeting.title}">名称</b></td><td th:text="${meeting.location}">地点</td><td th:text="${meeting.host}">主持人</td><td><a class="button small" th:href="@{/meetings/{id}/minutes.docx(id=${meeting.id})}">下载 Word</a></td></tr><tr th:if="${#lists.isEmpty(meetings)}"><td colspan="5" class="empty">暂无会议记录。</td></tr></tbody></table></div></section>
+</main>
+</body></html>
