@@ -6,8 +6,10 @@ import com.party.management.model.Member;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Date;
 import java.time.LocalDate;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 @Repository
@@ -117,12 +119,28 @@ public class PartyRepository {
                 meeting.getDecisions());
     }
 
-    private static Date sqlDate(LocalDate value) {
-        return value == null ? null : Date.valueOf(value);
+    /** Store dates as ISO text so SQLite does not convert java.sql.Date to epoch milliseconds. */
+    private static String sqlDate(LocalDate value) {
+        return value == null ? null : value.toString();
     }
 
     private static LocalDate date(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
-        Date value = rs.getDate(column);
-        return value == null ? null : value.toLocalDate();
+        String value = rs.getString(column);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value);
+        } catch (DateTimeParseException ignored) {
+            // Keep records written by the previous implementation readable.
+            try {
+                long epochMillis = Long.parseLong(value);
+                return Instant.ofEpochMilli(epochMillis)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate();
+            } catch (NumberFormatException ex) {
+                throw new java.sql.SQLException("无法解析日期字段 " + column + ": " + value, ex);
+            }
+        }
     }
 }
