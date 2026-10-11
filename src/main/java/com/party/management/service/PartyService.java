@@ -8,20 +8,27 @@ import com.party.management.repository.PartyRepository;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
 @Service
 public class PartyService {
     private final PartyRepository repository;
+    private final SignInRecognitionService signInRecognitionService;
 
-    public PartyService(PartyRepository repository) {
+    public PartyService(PartyRepository repository, SignInRecognitionService signInRecognitionService) {
         this.repository = repository;
+        this.signInRecognitionService = signInRecognitionService;
     }
 
     public long countMembers() { return repository.countMembers(); }
@@ -32,7 +39,74 @@ public class PartyService {
     public boolean updateMember(Member member) { return repository.updateMember(member); }
     public boolean deleteMember(long id) { return repository.deleteMember(id); }
     public List<Activity> activities() { return repository.findActivities(); }
-    public void addActivity(Activity activity) { repository.saveActivity(activity); }
+    public List<Activity> activities(String startDate, String endDate, String type) {
+        return repository.findActivities(startDate, endDate, type);
+    }
+    public Activity activity(long id) { return repository.findActivity(id); }
+    public List<Member> activityParticipants(long activityId) { return repository.findActivityParticipants(activityId); }
+    public long addActivity(Activity activity) { return repository.saveActivity(activity); }
+    public boolean updateActivity(Activity activity) { return repository.updateActivity(activity); }
+    @Transactional
+    public boolean deleteActivity(long id) {
+        boolean deleted = repository.deleteActivity(id);
+        if (deleted) {
+            Path directory = Path.of(System.getProperty("user.dir"), "data", "activity-files", String.valueOf(id)).toAbsolutePath().normalize();
+            try (var paths = Files.walk(directory)) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                    try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+                });
+            } catch (IOException ignored) {
+                // Database deletion is still complete if an old attachment is locked.
+            }
+        }
+        return deleted;
+    }
+
+    @Transactional
+    public void replaceActivityParticipants(long activityId, Collection<Long> memberIds) {
+        if (repository.findActivity(activityId) == null) {
+            throw new IllegalArgumentException("活动不存在");
+        }
+        repository.replaceActivityParticipants(activityId, memberIds);
+    }
+
+    @Transactional
+    public SignInRecognitionService.RecognitionResult recognizeAttendance(long activityId, MultipartFile file) throws IOException {
+        if (repository.findActivity(activityId) == null) {
+            throw new IllegalArgumentException("活动不存在");
+        }
+        SignInRecognitionService.RecognitionResult result = signInRecognitionService.recognize(file, members());
+        replaceActivityParticipants(activityId, result.matchedMembers().stream().map(Member::getId).toList());
+
+        String originalName = file.getOriginalFilename() == null ? "签到表" : file.getOriginalFilename();
+        String safeName = originalName.replaceAll("[^\\p{L}\\p{N}._-]", "_");
+        Path directory = Path.of(System.getProperty("user.dir"), "data", "activity-files", String.valueOf(activityId)).toAbsolutePath().normalize();
+        Files.createDirectories(directory);
+        Path destination = directory.resolve(System.currentTimeMillis() + "-" + safeName);
+        file.transferTo(destination.toFile());
+        repository.saveActivityFile(activityId, originalName, destination.toString(), file.getContentType());
+        return result;
+    }
+
+    public byte[] exportActivitiesCsv(List<Activity> activities) {
+        StringBuilder csv = new StringBuilder("日期,活动主题,活动类型,地点,参加人数,已匹配党员\n");
+        for (Activity activity : activities) {
+            String names = repository.findActivityParticipants(activity.getId()).stream()
+                    .map(Member::getName).collect(java.util.stream.Collectors.joining("、"));
+            csv.append(csvCell(activity.getActivityDate())).append(',')
+                    .append(csvCell(activity.getTitle())).append(',')
+                    .append(csvCell(activity.getType())).append(',')
+                    .append(csvCell(activity.getLocation())).append(',')
+                    .append(csvCell(activity.getParticipantCount())).append(',')
+                    .append(csvCell(names)).append('\n');
+        }
+        return ("\uFEFF" + csv).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String csvCell(Object value) {
+        String text = value == null ? "" : value.toString();
+        return "\"" + text.replace("\"", "\"\"") + "\"";
+    }
     public List<Meeting> meetings() { return repository.findMeetings(); }
     public void addMeeting(Meeting meeting) { repository.saveMeeting(meeting); }
 

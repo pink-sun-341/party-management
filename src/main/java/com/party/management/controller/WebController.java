@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -39,8 +41,8 @@ public class WebController {
     }
 
     @GetMapping("/members")
-    public String members(@RequestParam(required = false) String keyword,
-                          @RequestParam(required = false) String status,
+    public String members(@RequestParam(name = "keyword", required = false) String keyword,
+                          @RequestParam(name = "status", required = false) String status,
                           Model model) {
         model.addAttribute("members", service.members(keyword, status));
         model.addAttribute("member", new Member());
@@ -58,7 +60,7 @@ public class WebController {
     }
 
     @GetMapping("/members/{id}/edit")
-    public String editMember(@PathVariable long id, Model model) {
+    public String editMember(@PathVariable("id") long id, Model model) {
         Member member = service.member(id);
         if (member == null) {
             return "redirect:/members";
@@ -77,22 +79,30 @@ public class WebController {
     }
 
     @PostMapping("/members/{id}")
-    public String updateMember(@PathVariable long id, @ModelAttribute Member member) {
+    public String updateMember(@PathVariable("id") long id, @ModelAttribute Member member) {
         member.setId(id);
         service.updateMember(member);
         return "redirect:/members";
     }
 
     @PostMapping("/members/{id}/delete")
-    public String deleteMember(@PathVariable long id) {
+    public String deleteMember(@PathVariable("id") long id) {
         service.deleteMember(id);
         return "redirect:/members";
     }
 
     @GetMapping("/activities")
-    public String activities(Model model) {
-        model.addAttribute("activities", service.activities());
+    public String activities(@RequestParam(name = "startDate", required = false) String startDate,
+                             @RequestParam(name = "endDate", required = false) String endDate,
+                             @RequestParam(name = "type", required = false) String type,
+                             Model model) {
+        model.addAttribute("activities", service.activities(startDate, endDate, type));
         model.addAttribute("activity", new Activity());
+        model.addAttribute("members", service.members());
+        model.addAttribute("startDate", startDate == null ? "" : startDate);
+        model.addAttribute("endDate", endDate == null ? "" : endDate);
+        model.addAttribute("selectedType", type == null ? "" : type);
+        model.addAttribute("activityTypes", activityTypes());
         return "activities";
     }
 
@@ -100,6 +110,61 @@ public class WebController {
     public String addActivity(@ModelAttribute Activity activity) {
         service.addActivity(activity);
         return "redirect:/activities";
+    }
+
+    @PostMapping("/activities/{id}")
+    public String updateActivity(@PathVariable("id") long id, @ModelAttribute Activity activity) {
+        activity.setId(id);
+        service.updateActivity(activity);
+        return "redirect:/activities";
+    }
+
+    @PostMapping("/activities/{id}/delete")
+    public String deleteActivity(@PathVariable("id") long id) {
+        service.deleteActivity(id);
+        return "redirect:/activities";
+    }
+
+    @GetMapping("/activities/export.csv")
+    public ResponseEntity<ByteArrayResource> exportActivities(@RequestParam(name = "startDate", required = false) String startDate,
+                                                               @RequestParam(name = "endDate", required = false) String endDate,
+                                                               @RequestParam(name = "type", required = false) String type) {
+        byte[] content = service.exportActivitiesCsv(service.activities(startDate, endDate, type));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + URLEncoder.encode("组织生活活动.csv", StandardCharsets.UTF_8))
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .contentLength(content.length)
+                .body(new ByteArrayResource(content));
+    }
+
+    @GetMapping("/activities/{id}/participants")
+    @ResponseBody
+    public List<Member> activityParticipants(@PathVariable("id") long id) {
+        return service.activityParticipants(id);
+    }
+
+    @PostMapping("/activities/{id}/participants")
+    @ResponseBody
+    public ResponseEntity<?> replaceParticipants(@PathVariable("id") long id,
+                                                  @RequestParam(name = "memberIds", required = false) List<Long> memberIds) {
+        service.replaceActivityParticipants(id, memberIds);
+        return ResponseEntity.ok(java.util.Map.of("participantCount", service.activityParticipants(id).size()));
+    }
+
+    @PostMapping("/activities/{id}/attendance")
+    @ResponseBody
+    public ResponseEntity<?> recognizeAttendance(@PathVariable("id") long id,
+                                                 @RequestParam("file") MultipartFile file) throws IOException {
+        try {
+            var result = service.recognizeAttendance(id, file);
+            return ResponseEntity.ok(java.util.Map.of(
+                    "recognizedNames", result.recognizedNames(),
+                    "matchedNames", result.matchedMembers().stream().map(Member::getName).toList(),
+                    "unmatchedNames", result.unmatchedNames(),
+                    "participantCount", result.matchedMembers().size()));
+        } catch (IOException | IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage() == null ? "签到表识别失败" : ex.getMessage()));
+        }
     }
 
     @GetMapping("/meetings")
@@ -115,8 +180,12 @@ public class WebController {
         return "redirect:/meetings";
     }
 
+    private List<String> activityTypes() {
+        return List.of("支部党员大会", "支部委员会", "党小组会", "党课", "主题党日", "其他活动");
+    }
+
     @GetMapping("/meetings/{id}/minutes.docx")
-    public ResponseEntity<ByteArrayResource> downloadMinutes(@PathVariable long id) throws IOException {
+    public ResponseEntity<ByteArrayResource> downloadMinutes(@PathVariable("id") long id) throws IOException {
         byte[] content = service.generateMinutes(id);
         String filename = URLEncoder.encode("会议纪要.docx", StandardCharsets.UTF_8);
         return ResponseEntity.ok()

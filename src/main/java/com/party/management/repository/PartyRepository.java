@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Collection;
 
 @Repository
 public class PartyRepository {
@@ -85,15 +86,95 @@ public class PartyRepository {
     }
 
     public List<Activity> findActivities() {
-        return jdbc.query("SELECT * FROM activities ORDER BY activity_date DESC", (rs, rowNum) ->
-                new Activity(rs.getLong("id"), rs.getString("title"), rs.getString("type"),
-                        date(rs, "activity_date"), rs.getString("location"), rs.getInt("participant_count")));
+        return findActivities(null, null, null);
     }
 
-    public void saveActivity(Activity activity) {
+    public List<Activity> findActivities(String startDate, String endDate, String type) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT a.*, CASE WHEN EXISTS (SELECT 1 FROM activity_participants ap WHERE ap.activity_id = a.id)
+                    THEN (SELECT COUNT(*) FROM activity_participants ap2 WHERE ap2.activity_id = a.id)
+                    ELSE a.participant_count END AS participant_total
+                FROM activities a WHERE 1 = 1
+                """);
+        List<Object> args = new java.util.ArrayList<>();
+        if (startDate != null && !startDate.isBlank()) {
+            sql.append(" AND a.activity_date >= ?");
+            args.add(startDate);
+        }
+        if (endDate != null && !endDate.isBlank()) {
+            sql.append(" AND a.activity_date <= ?");
+            args.add(endDate);
+        }
+        if (type != null && !type.isBlank()) {
+            sql.append(" AND a.type = ?");
+            args.add(type);
+        }
+        sql.append(" ORDER BY a.activity_date DESC, a.id DESC");
+        return jdbc.query(sql.toString(), (rs, rowNum) -> activity(rs), args.toArray());
+    }
+
+    public Activity findActivity(long id) {
+        List<Activity> activities = jdbc.query("""
+                SELECT a.*, CASE WHEN EXISTS (SELECT 1 FROM activity_participants ap WHERE ap.activity_id = a.id)
+                    THEN (SELECT COUNT(*) FROM activity_participants ap2 WHERE ap2.activity_id = a.id)
+                    ELSE a.participant_count END AS participant_total
+                FROM activities a WHERE a.id = ?
+                """, (rs, rowNum) -> activity(rs), id);
+        return activities.isEmpty() ? null : activities.get(0);
+    }
+
+    public long saveActivity(Activity activity) {
         jdbc.update("INSERT INTO activities(title, type, activity_date, location, participant_count) VALUES (?, ?, ?, ?, ?)",
                 activity.getTitle(), activity.getType(), sqlDate(activity.getActivityDate()),
-                activity.getLocation(), activity.getParticipantCount());
+                activity.getLocation(), activity.getParticipantCount() == null ? 0 : activity.getParticipantCount());
+        return jdbc.queryForObject("SELECT last_insert_rowid()", Long.class);
+    }
+
+    public boolean updateActivity(Activity activity) {
+        return jdbc.update("""
+                UPDATE activities SET title = ?, type = ?, activity_date = ?, location = ? WHERE id = ?
+                """, activity.getTitle(), activity.getType(), sqlDate(activity.getActivityDate()),
+                activity.getLocation(), activity.getId()) > 0;
+    }
+
+    public boolean deleteActivity(long id) {
+        jdbc.update("DELETE FROM activity_files WHERE activity_id = ?", id);
+        jdbc.update("DELETE FROM activity_participants WHERE activity_id = ?", id);
+        return jdbc.update("DELETE FROM activities WHERE id = ?", id) > 0;
+    }
+
+    public List<Member> findActivityParticipants(long activityId) {
+        return jdbc.query("""
+                SELECT m.* FROM members m
+                INNER JOIN activity_participants ap ON ap.member_id = m.id
+                WHERE ap.activity_id = ? ORDER BY m.name
+                """, (rs, rowNum) -> new Member(
+                rs.getLong("id"), rs.getString("name"), rs.getString("gender"),
+                rs.getString("phone"), rs.getString("status"), date(rs, "application_date"),
+                date(rs, "activist_date"), date(rs, "development_object_date"),
+                date(rs, "probationary_date"), date(rs, "full_member_date")), activityId);
+    }
+
+    public void replaceActivityParticipants(long activityId, Collection<Long> memberIds) {
+        jdbc.update("DELETE FROM activity_participants WHERE activity_id = ?", activityId);
+        if (memberIds != null) {
+            for (Long memberId : memberIds) {
+                if (memberId != null) {
+                    jdbc.update("INSERT OR IGNORE INTO activity_participants(activity_id, member_id) VALUES (?, ?)", activityId, memberId);
+                }
+            }
+        }
+        jdbc.update("UPDATE activities SET participant_count = (SELECT COUNT(*) FROM activity_participants WHERE activity_id = ?) WHERE id = ?", activityId, activityId);
+    }
+
+    public void saveActivityFile(long activityId, String originalName, String storedPath, String fileType) {
+        jdbc.update("INSERT INTO activity_files(activity_id, original_name, stored_path, file_type) VALUES (?, ?, ?, ?)",
+                activityId, originalName, storedPath, fileType);
+    }
+
+    private static Activity activity(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new Activity(rs.getLong("id"), rs.getString("title"), rs.getString("type"),
+                date(rs, "activity_date"), rs.getString("location"), rs.getInt("participant_total"));
     }
 
     public List<Meeting> findMeetings() {
