@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const activityModal = document.querySelector('[data-activity-modal]');
     const participantModal = document.querySelector('[data-participant-modal]');
+    const detailModal = document.querySelector('[data-detail-modal]');
     const activityForm = document.querySelector('#activity-form');
     const participantForm = document.querySelector('#participant-form');
     const attendanceForm = document.querySelector('#attendance-form');
@@ -47,14 +48,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const openDetails = async (row) => {
+        currentActivityId = row.dataset.id;
+        document.querySelector('#detail-modal-title').textContent = `${row.dataset.title} · 活动详情`;
+        document.querySelector('#detail-date').textContent = row.dataset.activityDate || '未填写';
+        document.querySelector('#detail-type').textContent = row.dataset.type || '未填写';
+        document.querySelector('#detail-location').textContent = row.dataset.location || '未填写';
+        document.querySelector('#detail-count').textContent = '正在加载';
+        const list = document.querySelector('#detail-participant-list');
+        list.innerHTML = '<p class="detail-loading">正在加载参与人……</p>';
+        toggle(detailModal, true);
+        try {
+            const response = await fetch(`/activities/${currentActivityId}/participants`);
+            if (!response.ok) throw new Error('读取参与人失败');
+            const participants = await response.json();
+            document.querySelector('#detail-count').textContent = `${participants.length} 人`;
+            if (!participants.length) {
+                list.innerHTML = '<p class="detail-empty">暂未关联参与党员。</p>';
+                return;
+            }
+            list.innerHTML = participants.map((member) => {
+                const name = escapeHtml(member.name || '未填写姓名');
+                const status = escapeHtml(member.status || '未填写状态');
+                const phone = member.phone ? ` · ${escapeHtml(member.phone)}` : '';
+                return `<div class="detail-participant"><span class="detail-avatar">${name.substring(0, 1)}</span><span><b>${name}</b><small>${status}${phone}</small></span></div>`;
+            }).join('');
+        } catch (error) {
+            document.querySelector('#detail-count').textContent = '读取失败';
+            list.innerHTML = `<p class="detail-empty">${error.message}</p>`;
+        }
+    };
+
     document.querySelector('[data-open-activity-modal]')?.addEventListener('click', () => openActivity());
     document.querySelectorAll('.edit-activity-button').forEach((button) => button.addEventListener('click', () => openActivity(button.closest('.activity-row'))));
     document.querySelectorAll('.participant-button').forEach((button) => button.addEventListener('click', () => openParticipants(button.closest('.activity-row'))));
-    document.querySelectorAll('.attendance-button').forEach((button) => button.addEventListener('click', () => openParticipants(button.closest('.activity-row'))));
+    document.querySelectorAll('.detail-button').forEach((button) => button.addEventListener('click', () => openDetails(button.closest('.activity-row'))));
     document.querySelectorAll('[data-close-activity-modal]').forEach((button) => button.addEventListener('click', () => toggle(activityModal, false)));
     document.querySelectorAll('[data-close-participant-modal]').forEach((button) => button.addEventListener('click', () => toggle(participantModal, false)));
-    [activityModal, participantModal].forEach((modal) => modal?.addEventListener('click', (event) => { if (event.target === modal) toggle(modal, false); }));
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggle(activityModal, false); toggle(participantModal, false); } });
+    document.querySelectorAll('[data-close-detail-modal]').forEach((button) => button.addEventListener('click', () => toggle(detailModal, false)));
+    [activityModal, participantModal, detailModal].forEach((modal) => modal?.addEventListener('click', (event) => { if (event.target === modal) toggle(modal, false); }));
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggle(activityModal, false); toggle(participantModal, false); toggle(detailModal, false); } });
 
     participantForm?.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -92,5 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateCount(count) {
         const element = document.querySelector(`[data-count-id="${currentActivityId}"]`);
         if (element) element.textContent = `${count} 人`;
+    }
+
+    function escapeHtml(value) {
+        return String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
     }
 });
