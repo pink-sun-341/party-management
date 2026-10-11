@@ -1,32 +1,77 @@
 <!DOCTYPE html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>党员档案</title><link rel="stylesheet" href="/css/app.css"></head>
-<body>
-<header class="topbar"><div class="brand">党支部管理系统 <span>初稿</span></div><nav><a href="/">工作台</a><a class="active" href="/members">党员档案</a><a href="/activities">组织生活</a><a href="/meetings">会议纪要</a></nav></header>
-<main class="page">
-    <section class="page-heading"><div><p class="eyebrow">党员全生命周期</p><h1>党员档案</h1><p class="muted">记录基础信息和发展党员关键时间节点。</p></div></section>
-    <section class="panel form-panel"><div class="panel-title"><h2 th:text="${editMode} ? '编辑党员档案' : '新增党员档案'">新增党员档案</h2><a th:if="${editMode}" href="/members">取消编辑</a></div>
-        <form th:action="${editMode} ? '/members/' + member.id : '/members'" method="post" class="form-grid">
-        <label>姓名<input name="name" required placeholder="请输入姓名" th:value="${member.name}"></label>
-        <label>性别<select name="gender"><option value="" th:selected="${member.gender == null or member.gender == ''}">请选择</option><option value="男" th:selected="${member.gender == '男'}">男</option><option value="女" th:selected="${member.gender == '女'}">女</option></select></label>
-        <label>联系方式<input name="phone" placeholder="手机或办公电话" th:value="${member.phone}"></label>
-        <label>当前状态<select name="status"><option th:each="item : ${statusOptions}" th:value="${item}" th:text="${item}" th:selected="${item == member.status}">状态</option></select></label>
-        <label>提交申请书<input type="date" name="applicationDate" th:value="${member.applicationDate}"></label>
-        <label>确定为积极分子<input type="date" name="activistDate" th:value="${member.activistDate}"></label>
-        <label>确定为发展对象<input type="date" name="developmentObjectDate" th:value="${member.developmentObjectDate}"></label>
-        <label>接收为预备党员<input type="date" name="probationaryDate" th:value="${member.probationaryDate}"></label>
-        <label>转为正式党员<input type="date" name="fullMemberDate" th:value="${member.fullMemberDate}"></label>
-        <div class="form-actions"><button class="button primary" type="submit" th:text="${editMode} ? '保存修改' : '保存档案'">保存档案</button></div>
-    </form></section>
-    <section class="panel"><div class="panel-title"><h2>档案列表</h2><span class="muted" th:text="${#lists.size(members)} + ' 人'">0 人</span></div>
-        <form action="/members" method="get" class="filter-bar">
-            <label class="filter-keyword">搜索党员<input name="keyword" th:value="${keyword}" placeholder="按姓名或联系方式搜索"></label>
-            <label>状态<select name="status"><option value="" th:selected="${selectedStatus == ''}">全部状态</option><option value="正式党员" th:selected="${selectedStatus == '正式党员'}">正式党员</option><option value="预备党员" th:selected="${selectedStatus == '预备党员'}">预备党员</option><option value="发展对象" th:selected="${selectedStatus == '发展对象'}">发展对象</option><option value="积极分子" th:selected="${selectedStatus == '积极分子'}">积极分子</option><option value="入党申请人" th:selected="${selectedStatus == '入党申请人'}">入党申请人</option></select></label>
-            <div class="filter-actions"><button class="button primary" type="submit">查询</button><a class="button" href="/members">重置</a></div>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>党员档案 | 党支部管理系统</title>
+    <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/members.css">
+</head>
+<body class="members-page">
+<header class="topbar">
+    <a class="brand" href="/">党支部管理系统 <span>支部工作台</span></a>
+    <nav>
+        <a href="/">工作台</a>
+        <a class="active" href="/members">党员档案</a>
+        <a href="/activities">组织生活</a>
+        <a href="/meetings">会议纪要</a>
+    </nav>
+    <div class="topbar-meta">党员工作台</div>
+</header>
+
+<main class="members-shell">
+    <section class="members-hero">
+        <div>
+            <p class="eyebrow">MEMBER DIRECTORY</p>
+            <h1>党员档案</h1>
+            <p>统一管理党员基础信息、组织关系和发展阶段记录。</p>
+        </div>
+        <div class="hero-mark"><span th:text="${#lists.size(members)}">0</span><small>名党员</small></div>
+    </section>
+
+    <section class="member-workspace">
+        <div class="workspace-toolbar">
+            <div><h2>全部党员</h2><p th:text="${#lists.size(members)} + ' 条档案'">0 条档案</p></div>
+            <button class="button primary add-member-button" type="button" data-open-member-modal><span class="button-icon">＋</span>新增党员</button>
+        </div>
+
+        <form action="/members" method="get" class="member-filters">
+            <label class="filter-search"><span>搜索</span><span class="search-control"><span class="search-icon">⌕</span><input name="keyword" th:value="${keyword}" placeholder="搜索姓名或联系方式"></span></label>
+            <label><span>党员状态</span><select name="status"><option value="" th:selected="${selectedStatus == ''}">全部状态</option><option value="正式党员" th:selected="${selectedStatus == '正式党员'}">正式党员</option><option value="预备党员" th:selected="${selectedStatus == '预备党员'}">预备党员</option><option value="发展对象" th:selected="${selectedStatus == '发展对象'}">发展对象</option><option value="积极分子" th:selected="${selectedStatus == '积极分子'}">积极分子</option><option value="入党申请人" th:selected="${selectedStatus == '入党申请人'}">入党申请人</option></select></label>
+            <div class="filter-actions"><button class="button primary" type="submit">查询</button><a class="button ghost" href="/members">重置</a></div>
         </form>
-        <div class="table-wrap"><table><thead><tr><th>姓名</th><th>状态</th><th>联系方式</th><th>申请日期</th><th>预备党员日期</th><th>转正日期</th><th>操作</th></tr></thead>
-            <tbody><tr th:each="item : ${members}"><td><b th:text="${item.name}">姓名</b></td><td><span class="tag" th:text="${item.status}">状态</span></td><td th:text="${item.phone}">电话</td><td th:text="${item.applicationDate}">日期</td><td th:text="${item.probationaryDate}">日期</td><td th:text="${item.fullMemberDate}">日期</td><td class="actions"><a class="button small" th:href="@{/members/{id}/edit(id=${item.id})}">编辑</a><form th:action="@{/members/{id}/delete(id=${item.id})}" method="post" onsubmit="return confirm('确定删除这条党员档案吗？删除后不可恢复，请先确认已完成备份。');"><button class="button small danger" type="submit">删除</button></form></td></tr>
-            <tr th:if="${#lists.isEmpty(members)}"><td colspan="7" class="empty">没有符合条件的党员档案。</td></tr></tbody></table></div>
+
+        <div class="table-summary"><span>党员名册</span><span class="summary-filter" th:if="${keyword != '' or selectedStatus != ''}">已应用筛选</span><span class="summary-filter" th:unless="${keyword != '' or selectedStatus != ''}">全部记录</span></div>
+        <div class="table-wrap member-table-wrap">
+            <table class="member-table">
+                <thead><tr><th>党员</th><th>当前状态</th><th>联系方式</th><th>入党申请</th><th>成为预备党员</th><th>转正日期</th><th class="operation-column">操作</th></tr></thead>
+                <tbody>
+                <tr th:each="item : ${members}" class="member-row" th:attr="data-id=${item.id},data-name=${item.name},data-gender=${item.gender},data-phone=${item.phone},data-status=${item.status},data-application-date=${item.applicationDate},data-activist-date=${item.activistDate},data-development-object-date=${item.developmentObjectDate},data-probationary-date=${item.probationaryDate},data-full-member-date=${item.fullMemberDate}">
+                    <td><div class="member-identity"><span class="avatar" th:text="${#strings.substring(item.name, 0, 1)}">党</span><span><b th:text="${item.name}">姓名</b><small th:text="${item.gender == null or item.gender == '' ? '性别未填写' : item.gender}">性别</small></span></div></td>
+                    <td><span class="status-pill" th:classappend="${item.status == '正式党员' ? ' status-formal' : (item.status == '预备党员' ? ' status-probationary' : ' status-developing')}" th:text="${item.status}">状态</span></td>
+                    <td class="muted-cell" th:text="${item.phone == null or item.phone == '' ? '未填写' : item.phone}">联系方式</td><td class="date-cell" th:text="${item.applicationDate == null ? '—' : item.applicationDate}">—</td><td class="date-cell" th:text="${item.probationaryDate == null ? '—' : item.probationaryDate}">—</td><td class="date-cell" th:text="${item.fullMemberDate == null ? '—' : item.fullMemberDate}">—</td>
+                    <td class="row-actions"><button class="icon-button edit-member-button" type="button" title="编辑档案" aria-label="编辑档案">✎</button><form th:action="@{/members/{id}/delete(id=${item.id})}" method="post" onsubmit="return confirm('确定删除这条党员档案吗？删除后不可恢复，请先确认已完成备份。');"><button class="icon-button delete-action" type="submit" title="删除档案" aria-label="删除档案">⌫</button></form></td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(members)}"><td colspan="7" class="empty-state"><span class="empty-icon">○</span><b>没有找到党员档案</b><span>请调整筛选条件，或点击右上角新增党员。</span></td></tr>
+                </tbody>
+            </table>
+        </div>
     </section>
 </main>
-</body></html>
+
+<div class="modal-backdrop" data-member-modal aria-hidden="true">
+    <section class="member-modal" role="dialog" aria-modal="true" aria-labelledby="member-modal-title">
+        <div class="modal-header"><div><p class="eyebrow">MEMBER PROFILE</p><h2 id="member-modal-title">新增党员</h2><p>填写党员基础信息和发展阶段日期。</p></div><button class="modal-close" type="button" data-close-member-modal aria-label="关闭">×</button></div>
+        <form id="member-form" action="/members" method="post" class="member-form">
+            <input type="hidden" name="id" id="member-id">
+            <div class="form-section-title">基础信息</div>
+            <div class="modal-form-grid"><label>姓名 <input id="member-name" name="name" required placeholder="请输入姓名"></label><label>性别 <select id="member-gender" name="gender"><option value="">请选择</option><option value="男">男</option><option value="女">女</option></select></label><label>联系方式 <input id="member-phone" name="phone" placeholder="手机或办公电话"></label><label>当前状态 <select id="member-status" name="status" required><option th:each="item : ${statusOptions}" th:value="${item}" th:text="${item}">状态</option></select></label></div>
+            <div class="form-section-title timeline-title">发展阶段日期 <span>没有发生的阶段可以留空</span></div>
+            <div class="modal-form-grid timeline-grid"><label>提交入党申请书 <input id="member-application-date" type="date" name="applicationDate"></label><label>确定为积极分子 <input id="member-activist-date" type="date" name="activistDate"></label><label>确定为发展对象 <input id="member-development-object-date" type="date" name="developmentObjectDate"></label><label>接收为预备党员 <input id="member-probationary-date" type="date" name="probationaryDate"></label><label>转为正式党员 <input id="member-full-member-date" type="date" name="fullMemberDate"></label></div>
+            <div class="modal-footer"><button class="button ghost" type="button" data-close-member-modal>取消</button><button class="button primary" type="submit" id="member-submit">保存档案</button></div>
+        </form>
+    </section>
+</div>
+<script src="/js/members.js"></script>
+</body>
+</html>
