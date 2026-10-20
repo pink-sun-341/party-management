@@ -1,10 +1,12 @@
 package com.party.management.controller;
 
 import com.party.management.model.Activity;
+import com.party.management.model.ActivityFile;
 import com.party.management.model.Meeting;
 import com.party.management.model.Member;
 import com.party.management.service.PartyService;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -141,6 +143,35 @@ public class WebController {
     @ResponseBody
     public List<Member> activityParticipants(@PathVariable("id") long id) {
         return service.activityParticipants(id);
+    }
+
+    @GetMapping("/activities/{id}/images")
+    @ResponseBody
+    public List<ActivityFile> activityImages(@PathVariable("id") long id) {
+        return service.activityImages(id);
+    }
+
+    @PostMapping("/activities/{id}/images")
+    @ResponseBody
+    public ResponseEntity<?> uploadActivityImages(@PathVariable("id") long id,
+                                                  @RequestParam(name = "files") List<MultipartFile> files) {
+        try {
+            return ResponseEntity.ok(service.saveActivityImages(id, files));
+        } catch (IOException | IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage() == null ? "活动图片上传失败" : ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/activities/files/{fileId}")
+    public ResponseEntity<Resource> activityFile(@PathVariable("fileId") long fileId) {
+        Resource resource = service.activityFile(fileId);
+        String fileType = service.activityFileContentType(fileId);
+        if (resource == null || fileType == null) return ResponseEntity.notFound().build();
+        String contentType = fileType.isBlank() ? "application/octet-stream" : fileType;
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(resource);
     }
 
     @PostMapping("/activities/{id}/participants")

@@ -2,6 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const activityModal = document.querySelector('[data-activity-modal]');
     const participantModal = document.querySelector('[data-participant-modal]');
     const detailModal = document.querySelector('[data-detail-modal]');
+    const imageModal = document.querySelector('[data-image-modal]');
+    const lightbox = document.querySelector('[data-image-lightbox]');
     const activityForm = document.querySelector('#activity-form');
     const participantForm = document.querySelector('#participant-form');
     const attendanceForm = document.querySelector('#attendance-form');
@@ -56,38 +58,125 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('#detail-location').textContent = row.dataset.location || '未填写';
         document.querySelector('#detail-count').textContent = '正在加载';
         const list = document.querySelector('#detail-participant-list');
+        const imageList = document.querySelector('#detail-image-list');
         list.innerHTML = '<p class="detail-loading">正在加载参与人……</p>';
+        imageList.innerHTML = '<p class="detail-loading">正在加载活动图片……</p>';
         toggle(detailModal, true);
         try {
-            const response = await fetch(`/activities/${currentActivityId}/participants`);
-            if (!response.ok) throw new Error('读取参与人失败');
-            const participants = await response.json();
+            const [participantResponse, imageResponse] = await Promise.all([
+                fetch(`/activities/${currentActivityId}/participants`),
+                fetch(`/activities/${currentActivityId}/images`)
+            ]);
+            if (!participantResponse.ok) throw new Error('读取参与人失败');
+            if (!imageResponse.ok) throw new Error('读取活动图片失败');
+            const participants = await participantResponse.json();
+            const images = await imageResponse.json();
             document.querySelector('#detail-count').textContent = `${participants.length} 人`;
             if (!participants.length) {
                 list.innerHTML = '<p class="detail-empty">暂未关联参与党员。</p>';
-                return;
+            } else {
+                list.innerHTML = participants.map((member) => {
+                    const name = escapeHtml(member.name || '未填写姓名');
+                    const status = escapeHtml(member.status || '未填写状态');
+                    const phone = member.phone ? ` · ${escapeHtml(member.phone)}` : '';
+                    return `<div class="detail-participant"><span class="detail-avatar">${name.substring(0, 1)}</span><span><b>${name}</b><small>${status}${phone}</small></span></div>`;
+                }).join('');
             }
-            list.innerHTML = participants.map((member) => {
-                const name = escapeHtml(member.name || '未填写姓名');
-                const status = escapeHtml(member.status || '未填写状态');
-                const phone = member.phone ? ` · ${escapeHtml(member.phone)}` : '';
-                return `<div class="detail-participant"><span class="detail-avatar">${name.substring(0, 1)}</span><span><b>${name}</b><small>${status}${phone}</small></span></div>`;
-            }).join('');
+            renderDetailImages(images);
         } catch (error) {
             document.querySelector('#detail-count').textContent = '读取失败';
             list.innerHTML = `<p class="detail-empty">${error.message}</p>`;
+            imageList.innerHTML = '<p class="detail-empty">活动图片暂时无法读取。</p>';
         }
+    };
+
+    const openImageUpload = (row) => {
+        currentActivityId = row.dataset.id;
+        document.querySelector('#image-modal-title').textContent = `${row.dataset.title} · 活动图片`;
+        document.querySelector('#activity-images').value = '';
+        document.querySelector('#image-preview-list').innerHTML = '';
+        document.querySelector('#image-upload-status').textContent = '';
+        toggle(imageModal, true);
     };
 
     document.querySelector('[data-open-activity-modal]')?.addEventListener('click', () => openActivity());
     document.querySelectorAll('.edit-activity-button').forEach((button) => button.addEventListener('click', () => openActivity(button.closest('.activity-row'))));
     document.querySelectorAll('.participant-button').forEach((button) => button.addEventListener('click', () => openParticipants(button.closest('.activity-row'))));
     document.querySelectorAll('.detail-button').forEach((button) => button.addEventListener('click', () => openDetails(button.closest('.activity-row'))));
+    document.querySelectorAll('.image-button').forEach((button) => button.addEventListener('click', () => openImageUpload(button.closest('.activity-row'))));
     document.querySelectorAll('[data-close-activity-modal]').forEach((button) => button.addEventListener('click', () => toggle(activityModal, false)));
     document.querySelectorAll('[data-close-participant-modal]').forEach((button) => button.addEventListener('click', () => toggle(participantModal, false)));
     document.querySelectorAll('[data-close-detail-modal]').forEach((button) => button.addEventListener('click', () => toggle(detailModal, false)));
-    [activityModal, participantModal, detailModal].forEach((modal) => modal?.addEventListener('click', (event) => { if (event.target === modal) toggle(modal, false); }));
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggle(activityModal, false); toggle(participantModal, false); toggle(detailModal, false); } });
+    document.querySelectorAll('[data-close-image-modal]').forEach((button) => button.addEventListener('click', () => toggle(imageModal, false)));
+    document.querySelector('[data-close-lightbox]')?.addEventListener('click', () => toggle(lightbox, false));
+    lightbox?.addEventListener('click', (event) => { if (event.target === lightbox) toggle(lightbox, false); });
+    [activityModal, participantModal, detailModal, imageModal].forEach((modal) => modal?.addEventListener('click', (event) => { if (event.target === modal) toggle(modal, false); }));
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggle(activityModal, false); toggle(participantModal, false); toggle(detailModal, false); toggle(imageModal, false); toggle(lightbox, false); } });
+
+    document.querySelector('#activity-images')?.addEventListener('change', (event) => {
+        const files = Array.from(event.target.files || []);
+        const preview = document.querySelector('#image-preview-list');
+        const status = document.querySelector('#image-upload-status');
+        preview.innerHTML = '';
+        if (files.length > 8) {
+            status.textContent = '一次最多选择 8 张图片。';
+            event.target.value = '';
+            return;
+        }
+        status.textContent = files.length ? `已选择 ${files.length} 张图片，确认预览无误后上传。` : '';
+        files.forEach((file) => {
+            if (!file.type.startsWith('image/')) return;
+            const tile = document.createElement('div');
+            tile.className = 'image-preview-tile';
+            const image = document.createElement('img');
+            image.alt = file.name;
+            image.src = URL.createObjectURL(file);
+            const name = document.createElement('small');
+            name.textContent = file.name;
+            tile.append(image, name);
+            preview.append(tile);
+        });
+    });
+
+    document.querySelector('#upload-images-submit')?.addEventListener('click', async () => {
+        const input = document.querySelector('#activity-images');
+        const status = document.querySelector('#image-upload-status');
+        if (!input.files.length) { status.textContent = '请先选择活动图片。'; return; }
+        const body = new FormData();
+        Array.from(input.files).forEach((file) => body.append('files', file));
+        status.textContent = '正在上传图片，请稍候……';
+        try {
+            const response = await fetch(`/activities/${currentActivityId}/images`, { method: 'POST', body });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || '图片上传失败');
+            status.textContent = `上传完成，共保存 ${result.length} 张活动图片。`;
+            document.querySelector('#image-preview-list').innerHTML = '';
+            input.value = '';
+        } catch (error) { status.textContent = error.message; }
+    });
+
+    function renderDetailImages(images) {
+        const list = document.querySelector('#detail-image-list');
+        document.querySelector('#detail-image-count').textContent = `${images.length} 张`;
+        if (!images.length) { list.innerHTML = '<p class="detail-empty">暂未上传活动图片。</p>'; return; }
+        list.innerHTML = '';
+        images.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'detail-image-tile';
+            button.title = `查看 ${item.originalName || '活动图片'}`;
+            const image = document.createElement('img');
+            image.src = item.url;
+            image.alt = item.originalName || '活动图片';
+            button.append(image);
+            button.addEventListener('click', () => {
+                document.querySelector('#lightbox-image').src = item.url;
+                document.querySelector('#lightbox-image').alt = item.originalName || '活动图片';
+                toggle(lightbox, true);
+            });
+            list.append(button);
+        });
+    }
 
     participantForm?.addEventListener('submit', async (event) => {
         event.preventDefault();

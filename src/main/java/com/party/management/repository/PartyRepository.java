@@ -1,6 +1,7 @@
 package com.party.management.repository;
 
 import com.party.management.model.Activity;
+import com.party.management.model.ActivityFile;
 import com.party.management.model.Meeting;
 import com.party.management.model.Member;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -171,6 +172,25 @@ public class PartyRepository {
         jdbc.update("INSERT INTO activity_files(activity_id, original_name, stored_path, file_type) VALUES (?, ?, ?, ?)",
                 activityId, originalName, storedPath, fileType);
     }
+
+    public List<ActivityFile> findActivityImages(long activityId) {
+        return jdbc.query("""
+                SELECT id, original_name, file_type FROM activity_files
+                WHERE activity_id = ? AND file_type LIKE 'image/%' ORDER BY id
+                """, (rs, rowNum) -> new ActivityFile(rs.getLong("id"),
+                rs.getString("original_name"), rs.getString("file_type"), "/activities/files/" + rs.getLong("id")), activityId);
+    }
+
+    public ActivityFileRecord findActivityFile(long fileId) {
+        List<ActivityFileRecord> files = jdbc.query("""
+                SELECT id, activity_id, original_name, stored_path, file_type
+                FROM activity_files WHERE id = ?
+                """, (rs, rowNum) -> new ActivityFileRecord(rs.getLong("id"), rs.getLong("activity_id"),
+                rs.getString("original_name"), rs.getString("stored_path"), rs.getString("file_type")), fileId);
+        return files.isEmpty() ? null : files.get(0);
+    }
+
+    public record ActivityFileRecord(Long id, Long activityId, String originalName, String storedPath, String fileType) {}
 
     private static Activity activity(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new Activity(rs.getLong("id"), rs.getString("title"), rs.getString("type"),

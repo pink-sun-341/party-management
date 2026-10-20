@@ -1,6 +1,7 @@
 package com.party.management.service;
 
 import com.party.management.model.Activity;
+import com.party.management.model.ActivityFile;
 import com.party.management.model.Meeting;
 import com.party.management.model.Member;
 import com.party.management.model.Reminder;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class PartyService {
@@ -44,6 +46,7 @@ public class PartyService {
     }
     public Activity activity(long id) { return repository.findActivity(id); }
     public List<Member> activityParticipants(long activityId) { return repository.findActivityParticipants(activityId); }
+    public List<ActivityFile> activityImages(long activityId) { return repository.findActivityImages(activityId); }
     public long addActivity(Activity activity) { return repository.saveActivity(activity); }
     public boolean updateActivity(Activity activity) { return repository.updateActivity(activity); }
     @Transactional
@@ -86,6 +89,62 @@ public class PartyService {
         file.transferTo(destination.toFile());
         repository.saveActivityFile(activityId, originalName, destination.toString(), file.getContentType());
         return result;
+    }
+
+    @Transactional
+    public List<ActivityFile> saveActivityImages(long activityId, List<MultipartFile> files) throws IOException {
+        if (repository.findActivity(activityId) == null) {
+            throw new IllegalArgumentException("活动不存在");
+        }
+        List<MultipartFile> uploads = files == null ? List.of() : files.stream().filter(file -> file != null && !file.isEmpty()).toList();
+        if (uploads.isEmpty()) throw new IllegalArgumentException("请至少选择一张活动图片");
+        if (uploads.size() > 8) throw new IllegalArgumentException("一次最多上传 8 张活动图片");
+        long currentCount = activityImages(activityId).size();
+        if (currentCount + uploads.size() > 12) throw new IllegalArgumentException("每项活动最多保存 12 张图片");
+
+        for (MultipartFile file : uploads) {
+            String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(java.util.Locale.ROOT);
+            if (!Set.of("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif").contains(contentType)) {
+                throw new IllegalArgumentException("活动图片仅支持 JPG、PNG、WEBP 或 HEIC 格式");
+            }
+            if (file.getSize() > 10 * 1024 * 1024) throw new IllegalArgumentException("单张活动图片不能超过 10MB");
+        }
+
+        Path directory = Path.of(System.getProperty("user.dir"), "data", "activity-files", String.valueOf(activityId)).toAbsolutePath().normalize();
+        Files.createDirectories(directory);
+        List<Path> savedPaths = new ArrayList<>();
+        try {
+            for (MultipartFile file : uploads) {
+            String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(java.util.Locale.ROOT);
+            String originalName = file.getOriginalFilename() == null ? "活动图片" : file.getOriginalFilename();
+            String safeName = originalName.replaceAll("[^\\p{L}\\p{N}._-]", "_");
+            Path destination = directory.resolve(System.currentTimeMillis() + "-" + java.util.UUID.randomUUID() + "-" + safeName).normalize();
+            if (!destination.getParent().equals(directory)) throw new IllegalArgumentException("图片文件名无效");
+            file.transferTo(destination.toFile());
+            savedPaths.add(destination);
+            repository.saveActivityFile(activityId, originalName, destination.toString(), contentType);
+            }
+        } catch (IOException | RuntimeException ex) {
+            for (Path savedPath : savedPaths) {
+                try { Files.deleteIfExists(savedPath); } catch (IOException ignored) { }
+            }
+            throw ex;
+        }
+        return activityImages(activityId);
+    }
+
+    public org.springframework.core.io.Resource activityFile(long fileId) {
+        PartyRepository.ActivityFileRecord file = repository.findActivityFile(fileId);
+        if (file == null || file.fileType() == null || !file.fileType().startsWith("image/")) return null;
+        Path path = Path.of(file.storedPath()).toAbsolutePath().normalize();
+        Path root = Path.of(System.getProperty("user.dir"), "data", "activity-files").toAbsolutePath().normalize();
+        if (!path.startsWith(root) || !Files.isRegularFile(path)) return null;
+        return new org.springframework.core.io.FileSystemResource(path);
+    }
+
+    public String activityFileContentType(long fileId) {
+        PartyRepository.ActivityFileRecord file = repository.findActivityFile(fileId);
+        return file == null ? null : file.fileType();
     }
 
     public byte[] exportActivitiesCsv(List<Activity> activities) {
