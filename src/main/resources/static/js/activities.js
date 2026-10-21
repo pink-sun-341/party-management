@@ -92,7 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text) {
             try { body = JSON.parse(text); } catch (ignored) { body = {}; }
         }
-        if (!response.ok) throw new Error(body.message || '请求失败，请重试。');
+        if (!response.ok) {
+            if (response.status === 413) throw new Error('图片文件过大，请将单张图片控制在 10MB 以内。');
+            throw new Error(body.message || '请求失败，请重试。');
+        }
         return body;
     };
 

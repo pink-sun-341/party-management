@@ -4,6 +4,10 @@ spring:
   datasource:
     url: jdbc:sqlite:data/party-management.db
     driver-class-name: org.sqlite.JDBC
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 80MB
   sql:
     init:
       mode: always
