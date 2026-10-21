@@ -223,23 +223,6 @@ public class WebController {
         return ResponseEntity.ok(java.util.Map.of("participantCount", service.activityParticipants(id).size()));
     }
 
-    @PostMapping("/activities/{id}/attendance")
-    @ResponseBody
-    public ResponseEntity<?> recognizeAttendance(@PathVariable("id") long id,
-                                                 @RequestParam("file") MultipartFile file) throws IOException {
-        try {
-            var result = service.recognizeAttendance(id, file);
-            return ResponseEntity.ok(java.util.Map.of(
-                    "recognizedNames", result.recognizedNames(),
-                    "matchedNames", result.matchedMembers().stream().map(Member::getName).toList(),
-                    "unmatchedNames", result.unmatchedNames(),
-                    "absentNames", result.absentNames(),
-                    "participantCount", result.matchedMembers().size()));
-        } catch (IOException | IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage() == null ? "签到表识别失败" : ex.getMessage()));
-        }
-    }
-
     @GetMapping("/meetings")
     public String meetings(Model model) {
         model.addAttribute("meetings", service.meetings());

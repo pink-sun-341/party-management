@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const lightbox = document.querySelector('[data-image-lightbox]');
     const activityForm = document.querySelector('#activity-form');
     const participantForm = document.querySelector('#participant-form');
-    const attendanceForm = document.querySelector('#attendance-form');
     const activityFields = {
         title: document.querySelector('#activity-title'),
         type: document.querySelector('#activity-type'),
@@ -15,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const editorParticipantInputs = () => Array.from(document.querySelectorAll('#editor-participant-list input[type="checkbox"]'));
     const participantInputs = () => Array.from(document.querySelectorAll('#participant-form input[type="checkbox"]'));
+    const memberSearchInputs = () => Array.from(document.querySelectorAll('[data-member-search]'));
     const editorImageInput = document.querySelector('#activity-editor-images');
     const uploadImageInput = document.querySelector('#activity-images');
     const editorPreview = document.querySelector('#editor-image-preview-list');
@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activityForm?.reset();
         if (activityFields.type) activityFields.type.value = '主题党日';
         editorParticipantInputs().forEach((input) => { input.checked = false; });
+        resetMemberFilters();
         resetInput(editorImageInput);
         clearPreview(editorPreview, editorPreviewUrls);
         if (editorStatus) editorStatus.textContent = '';
@@ -112,6 +113,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const applyMemberFilter = (searchInput) => {
+        const scope = searchInput.dataset.memberSearch === 'editor'
+            ? '#editor-participant-list'
+            : '#participant-form .member-check-list';
+        const list = document.querySelector(scope);
+        if (!list) return;
+        const keyword = searchInput.value.trim().toLocaleLowerCase();
+        const rows = Array.from(list.querySelectorAll('.member-check'));
+        let visibleCount = 0;
+        rows.forEach((row) => {
+            const name = row.querySelector('input[data-member-name]')?.dataset.memberName || row.textContent;
+            const visible = !keyword || name.toLocaleLowerCase().includes(keyword);
+            row.hidden = !visible;
+            if (visible) visibleCount += 1;
+        });
+        const count = document.querySelector(`[data-member-search-count="${searchInput.dataset.memberSearch}"]`);
+        if (count) count.textContent = keyword ? `显示 ${visibleCount} / ${rows.length} 名` : `共 ${rows.length} 名`;
+        const empty = list.querySelector('.member-filter-empty');
+        if (empty) empty.hidden = rows.length === 0 || visibleCount > 0;
+    };
+
+    const resetMemberFilters = () => {
+        memberSearchInputs().forEach((input) => {
+            input.value = '';
+            applyMemberFilter(input);
+        });
+    };
+
     const getCheckedIds = (inputs) => inputs.filter((input) => input.checked).map((input) => input.value);
 
     const replaceParticipants = async (activityId, inputs) => {
@@ -156,16 +185,15 @@ document.addEventListener('DOMContentLoaded', () => {
         currentActivityId = row.dataset.id;
         document.querySelector('#participant-modal-title').textContent = `${row.dataset.title} · 活动参与人`;
         participantInputs().forEach((input) => { input.checked = false; });
-        resetInput(document.querySelector('#attendance-file'));
-        document.querySelector('#recognition-result').hidden = true;
-        document.querySelector('#attendance-status').textContent = '';
+        resetMemberFilters();
+        document.querySelector('#participant-status').textContent = '';
         toggle(participantModal, true);
         try {
             const participants = await fetchJson(`/activities/${currentActivityId}/participants`);
             const ids = new Set(participants.map((member) => String(member.id)));
             participantInputs().forEach((input) => { input.checked = ids.has(input.value); });
         } catch (error) {
-            document.querySelector('#attendance-status').textContent = error.message;
+            document.querySelector('#participant-status').textContent = error.message;
         }
     };
 
@@ -267,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         const row = button.closest('.activity-row');
         const activityId = row?.dataset.id;
-        if (!activityId || !window.confirm('确定删除这条活动记录吗？关联参与人、签到文件和活动图片也会删除。')) return;
+        if (!activityId || !window.confirm('确定删除这条活动记录吗？关联参与人和活动图片也会删除。')) return;
         button.disabled = true;
         try {
             await fetchJson(`/api/activities/${activityId}`, { method: 'DELETE' });
@@ -297,6 +325,9 @@ document.addEventListener('DOMContentLoaded', () => {
         [activityModal, participantModal, detailModal, imageModal].forEach((modal) => toggle(modal, false));
         closeLightbox();
     });
+
+    memberSearchInputs().forEach((input) => input.addEventListener('input', () => applyMemberFilter(input)));
+    resetMemberFilters();
 
     editorImageInput?.addEventListener('change', (event) => {
         const files = Array.from(event.target.files || []);
@@ -393,43 +424,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     participantForm?.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const status = document.querySelector('#attendance-status');
+        const status = document.querySelector('#participant-status');
         try {
             const result = await replaceParticipants(currentActivityId, participantInputs());
             updateCount(result.participantCount);
             status.textContent = '参与人已保存。';
         } catch (error) {
             status.textContent = error.message;
-        }
-    });
-
-    attendanceForm?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const file = document.querySelector('#attendance-file');
-        const status = document.querySelector('#attendance-status');
-        const submit = attendanceForm.querySelector('button[type="submit"]');
-        if (!file.files.length) return;
-        submit.disabled = true;
-        status.textContent = '正在识别签到表，首次识别可能需要几十秒，请勿关闭窗口……';
-        const body = new FormData();
-        body.append('file', file.files[0]);
-        try {
-            const result = await fetchJson(`/activities/${currentActivityId}/attendance`, { method: 'POST', body }, 120000);
-            const matched = new Set(result.matchedNames);
-            participantInputs().forEach((input) => { input.checked = matched.has(input.dataset.memberName); });
-            updateCount(result.participantCount);
-            document.querySelector('#recognition-result').hidden = false;
-            document.querySelector('#matched-result').textContent = result.matchedNames.length ? `已匹配：${result.matchedNames.join('、')}` : '已匹配：无';
-            const absent = result.absentNames || [];
-            document.querySelector('#absent-result').textContent = absent.length ? `未参加或请假：${absent.join('、')}` : '未参加或请假：无';
-            const unmatched = document.querySelector('#unmatched-result');
-            unmatched.textContent = result.unmatchedNames.length ? `未匹配：${result.unmatchedNames.join('、')}（请核对姓名）` : '未匹配：无';
-            unmatched.classList.toggle('unmatched', result.unmatchedNames.length > 0);
-            status.textContent = '识别完成，参与人已更新。';
-        } catch (error) {
-            status.textContent = error.message;
-        } finally {
-            submit.disabled = false;
         }
     });
 

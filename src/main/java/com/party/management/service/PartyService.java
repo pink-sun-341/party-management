@@ -27,11 +27,9 @@ import java.util.Set;
 @Service
 public class PartyService {
     private final PartyRepository repository;
-    private final SignInRecognitionService signInRecognitionService;
 
-    public PartyService(PartyRepository repository, SignInRecognitionService signInRecognitionService) {
+    public PartyService(PartyRepository repository) {
         this.repository = repository;
-        this.signInRecognitionService = signInRecognitionService;
     }
 
     public long countMembers() { return repository.countMembers(); }
@@ -72,24 +70,6 @@ public class PartyService {
             throw new IllegalArgumentException("活动不存在");
         }
         repository.replaceActivityParticipants(activityId, memberIds);
-    }
-
-    @Transactional
-    public SignInRecognitionService.RecognitionResult recognizeAttendance(long activityId, MultipartFile file) throws IOException {
-        if (repository.findActivity(activityId) == null) {
-            throw new IllegalArgumentException("活动不存在");
-        }
-        SignInRecognitionService.RecognitionResult result = signInRecognitionService.recognize(file, members());
-        replaceActivityParticipants(activityId, result.matchedMembers().stream().map(Member::getId).toList());
-
-        String originalName = file.getOriginalFilename() == null ? "签到表" : file.getOriginalFilename();
-        String safeName = originalName.replaceAll("[^\\p{L}\\p{N}._-]", "_");
-        Path directory = Path.of(System.getProperty("user.dir"), "data", "activity-files", String.valueOf(activityId)).toAbsolutePath().normalize();
-        Files.createDirectories(directory);
-        Path destination = directory.resolve(System.currentTimeMillis() + "-" + safeName);
-        file.transferTo(destination.toFile());
-        repository.saveActivityFile(activityId, originalName, destination.toString(), file.getContentType());
-        return result;
     }
 
     @Transactional
