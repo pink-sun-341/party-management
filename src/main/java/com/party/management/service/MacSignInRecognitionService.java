@@ -66,6 +66,7 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
     private ImageRecognitionResult recognizeImage(MultipartFile file, List<Member> members) throws IOException {
         Path image = Files.createTempFile("party-sign-in-", "." + extension(file.getOriginalFilename()));
         Path memberFile = Files.createTempFile("party-sign-in-members-", ".txt");
+        Path moduleCache = Files.createTempDirectory("party-swift-cache-");
         try {
             file.transferTo(image);
             Files.write(memberFile, members.stream().map(Member::getName).toList(), StandardCharsets.UTF_8);
@@ -74,7 +75,8 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
                 try (var input = new ClassPathResource("ocr/macos_vision_ocr.swift").getInputStream()) {
                     Files.copy(input, script, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
-                Process process = new ProcessBuilder("/usr/bin/swift", script.toString(), image.toString(), memberFile.toString())
+                Process process = new ProcessBuilder("/usr/bin/swift", "-module-cache-path", moduleCache.toString(),
+                                script.toString(), image.toString(), memberFile.toString())
                         .redirectErrorStream(true)
                         .start();
                 try {
@@ -91,7 +93,9 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
                     output = reader.lines().collect(Collectors.joining("\n"));
                 }
                 if (process.exitValue() != 0) {
-                    throw new IOException("当前电脑未能完成图片识别，请改用 CSV 或 TXT 文件");
+                    String detail = output.lines().reduce((first, second) -> second).orElse("").trim();
+                    if (detail.length() > 180) detail = detail.substring(Math.max(0, detail.length() - 180));
+                    throw new IOException(detail.isBlank() ? "当前电脑未能完成图片识别，请重启应用后重试" : "图片识别程序启动失败：" + detail);
                 }
                 return parseImageResult(output);
             } finally {
@@ -100,6 +104,11 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
         } finally {
             Files.deleteIfExists(image);
             Files.deleteIfExists(memberFile);
+            try (var paths = Files.walk(moduleCache)) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                    try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+                });
+            }
         }
     }
 

@@ -19,7 +19,7 @@ do {
     exit(4)
 }
 
-let observations = (request.results as? [VNRecognizedTextObservation]) ?? []
+let observations = request.results ?? []
 guard CommandLine.arguments.count > 2 else {
     for observation in observations {
         if let text = observation.topCandidates(1).first?.string { print(text) }
@@ -54,7 +54,7 @@ func escaped(_ value: String) -> String {
 }
 
 func overlap(_ first: CGRect, _ second: CGRect) -> Bool {
-    first.intersects(second) || first.contains(second.midX, second.midY) || second.contains(first.midX, first.midY)
+    first.intersects(second) || first.contains(CGPoint(x: second.midX, y: second.midY)) || second.contains(CGPoint(x: first.midX, y: first.midY))
 }
 
 func isSlashOnly(_ value: String) -> Bool {
