@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.List;
 import java.util.Set;
 
@@ -58,7 +59,7 @@ public class PartyService {
                 paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
                     try { Files.deleteIfExists(path); } catch (IOException ignored) { }
                 });
-            } catch (IOException ignored) {
+            } catch (IOException | RuntimeException ignored) {
                 // Database deletion is still complete if an old attachment is locked.
             }
         }
@@ -103,8 +104,7 @@ public class PartyService {
         if (currentCount + uploads.size() > 12) throw new IllegalArgumentException("每项活动最多保存 12 张图片");
 
         for (MultipartFile file : uploads) {
-            String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(java.util.Locale.ROOT);
-            if (!Set.of("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif").contains(contentType)) {
+            if (imageContentType(file) == null) {
                 throw new IllegalArgumentException("活动图片仅支持 JPG、PNG、WEBP 或 HEIC 格式");
             }
             if (file.getSize() > 10 * 1024 * 1024) throw new IllegalArgumentException("单张活动图片不能超过 10MB");
@@ -115,7 +115,7 @@ public class PartyService {
         List<Path> savedPaths = new ArrayList<>();
         try {
             for (MultipartFile file : uploads) {
-            String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(java.util.Locale.ROOT);
+            String contentType = imageContentType(file);
             String originalName = file.getOriginalFilename() == null ? "活动图片" : file.getOriginalFilename();
             String safeName = originalName.replaceAll("[^\\p{L}\\p{N}._-]", "_");
             Path destination = directory.resolve(System.currentTimeMillis() + "-" + java.util.UUID.randomUUID() + "-" + safeName).normalize();
@@ -131,6 +131,25 @@ public class PartyService {
             throw ex;
         }
         return activityImages(activityId);
+    }
+
+    private static String imageContentType(MultipartFile file) {
+        String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
+        if ("image/jpg".equals(contentType)) return "image/jpeg";
+        if (Set.of("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif").contains(contentType)) {
+            return contentType;
+        }
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
+        int dot = name.lastIndexOf('.');
+        if (dot < 0) return null;
+        return switch (name.substring(dot + 1)) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "webp" -> "image/webp";
+            case "heic" -> "image/heic";
+            case "heif" -> "image/heif";
+            default -> null;
+        };
     }
 
     public org.springframework.core.io.Resource activityFile(long fileId) {

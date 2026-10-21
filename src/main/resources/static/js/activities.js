@@ -56,7 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const validateImages = (files, maximum) => {
         if (files.length > maximum) return `一次最多选择 ${maximum} 张图片。`;
         for (const file of files) {
-            if (!allowedImageTypes.has((file.type || '').toLowerCase())) {
+            const type = (file.type || '').toLowerCase();
+            const extension = (file.name || '').toLowerCase().split('.').pop();
+            const allowedByName = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']).has(extension);
+            if (!allowedImageTypes.has(type) && type !== 'image/jpg' && !allowedByName) {
                 return `${file.name} 不是支持的图片格式。`;
             }
             if (file.size > 10 * 1024 * 1024) {
@@ -257,6 +260,21 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.participant-button').forEach((button) => button.addEventListener('click', () => openParticipants(button.closest('.activity-row'))));
     document.querySelectorAll('.detail-button').forEach((button) => button.addEventListener('click', () => openDetails(button.closest('.activity-row'))));
     document.querySelectorAll('.image-button').forEach((button) => button.addEventListener('click', () => openImageUpload(button.closest('.activity-row'))));
+    document.querySelectorAll('.delete-activity-button').forEach((button) => button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        const row = button.closest('.activity-row');
+        const activityId = row?.dataset.id;
+        if (!activityId || !window.confirm('确定删除这条活动记录吗？关联参与人、签到文件和活动图片也会删除。')) return;
+        button.disabled = true;
+        try {
+            await fetchJson(`/api/activities/${activityId}`, { method: 'DELETE' });
+            row.remove();
+            window.location.reload();
+        } catch (error) {
+            button.disabled = false;
+            window.alert(error.message);
+        }
+    }));
     document.querySelectorAll('[data-close-activity-modal]').forEach((button) => button.addEventListener('click', () => { resetEditor(); toggle(activityModal, false); }));
     document.querySelectorAll('[data-close-participant-modal]').forEach((button) => button.addEventListener('click', () => toggle(participantModal, false)));
     document.querySelectorAll('[data-close-detail-modal]').forEach((button) => button.addEventListener('click', () => toggle(detailModal, false)));

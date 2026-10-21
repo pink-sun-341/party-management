@@ -148,6 +148,18 @@ public class WebController {
         return "redirect:/activities";
     }
 
+    @DeleteMapping("/api/activities/{id}")
+    @ResponseBody
+    public ResponseEntity<?> deleteActivityApi(@PathVariable("id") long id) {
+        try {
+            return service.deleteActivity(id)
+                    ? ResponseEntity.noContent().build()
+                    : ResponseEntity.notFound().build();
+        } catch (RuntimeException ex) {
+            return ResponseEntity.internalServerError().body(java.util.Map.of("message", "活动删除失败，请检查数据库文件权限后重试"));
+        }
+    }
+
     @GetMapping("/activities/export.csv")
     public ResponseEntity<ByteArrayResource> exportActivities(@RequestParam(name = "startDate", required = false) String startDate,
                                                                @RequestParam(name = "endDate", required = false) String endDate,
