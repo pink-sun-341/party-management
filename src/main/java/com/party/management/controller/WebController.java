@@ -233,6 +233,7 @@ public class WebController {
                     "recognizedNames", result.recognizedNames(),
                     "matchedNames", result.matchedMembers().stream().map(Member::getName).toList(),
                     "unmatchedNames", result.unmatchedNames(),
+                    "absentNames", result.absentNames(),
                     "participantCount", result.matchedMembers().size()));
         } catch (IOException | IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage() == null ? "签到表识别失败" : ex.getMessage()));

@@ -10,5 +10,6 @@ import java.util.List;
 public interface SignInRecognitionService {
     RecognitionResult recognize(MultipartFile file, List<Member> members) throws IOException;
 
-    record RecognitionResult(List<String> recognizedNames, List<Member> matchedMembers, List<String> unmatchedNames) {}
+    record RecognitionResult(List<String> recognizedNames, List<Member> matchedMembers,
+                             List<String> unmatchedNames, List<String> absentNames) {}
 }

@@ -418,6 +418,8 @@ document.addEventListener('DOMContentLoaded', () => {
             updateCount(result.participantCount);
             document.querySelector('#recognition-result').hidden = false;
             document.querySelector('#matched-result').textContent = result.matchedNames.length ? `已匹配：${result.matchedNames.join('、')}` : '已匹配：无';
+            const absent = result.absentNames || [];
+            document.querySelector('#absent-result').textContent = absent.length ? `未参加或请假：${absent.join('、')}` : '未参加或请假：无';
             const unmatched = document.querySelector('#unmatched-result');
             unmatched.textContent = result.unmatchedNames.length ? `未匹配：${result.unmatchedNames.join('、')}（请核对姓名）` : '未匹配：无';
             unmatched.classList.toggle('unmatched', result.unmatchedNames.length > 0);

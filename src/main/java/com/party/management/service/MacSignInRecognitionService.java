@@ -40,7 +40,8 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
         if (Set.of("txt", "csv", "tsv").contains(extension)) {
             text = new String(file.getBytes(), StandardCharsets.UTF_8);
         } else if (Set.of("jpg", "jpeg", "png", "heic", "heif").contains(extension)) {
-            text = recognizeImage(file);
+            ImageRecognitionResult imageResult = recognizeImage(file, members);
+            return imageResult.toRecognitionResult(members);
         } else {
             throw new IllegalArgumentException("支持 TXT、CSV、TSV、JPG、PNG 或 HEIC 格式");
         }
@@ -59,19 +60,21 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
                 unmatched.add(name);
             }
         }
-        return new RecognitionResult(names, matched, unmatched);
+        return new RecognitionResult(names, matched, unmatched, List.of());
     }
 
-    private String recognizeImage(MultipartFile file) throws IOException {
+    private ImageRecognitionResult recognizeImage(MultipartFile file, List<Member> members) throws IOException {
         Path image = Files.createTempFile("party-sign-in-", "." + extension(file.getOriginalFilename()));
+        Path memberFile = Files.createTempFile("party-sign-in-members-", ".txt");
         try {
             file.transferTo(image);
+            Files.write(memberFile, members.stream().map(Member::getName).toList(), StandardCharsets.UTF_8);
             Path script = Files.createTempFile("party-vision-ocr-", ".swift");
             try {
                 try (var input = new ClassPathResource("ocr/macos_vision_ocr.swift").getInputStream()) {
                     Files.copy(input, script, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
-                Process process = new ProcessBuilder("/usr/bin/swift", script.toString(), image.toString())
+                Process process = new ProcessBuilder("/usr/bin/swift", script.toString(), image.toString(), memberFile.toString())
                         .redirectErrorStream(true)
                         .start();
                 try {
@@ -90,12 +93,42 @@ public class MacSignInRecognitionService implements SignInRecognitionService {
                 if (process.exitValue() != 0) {
                     throw new IOException("当前电脑未能完成图片识别，请改用 CSV 或 TXT 文件");
                 }
-                return output;
+                return parseImageResult(output);
             } finally {
                 Files.deleteIfExists(script);
             }
         } finally {
             Files.deleteIfExists(image);
+            Files.deleteIfExists(memberFile);
+        }
+    }
+
+    private static ImageRecognitionResult parseImageResult(String output) throws IOException {
+        List<ImageMatch> matches = new ArrayList<>();
+        for (String line : output.lines().toList()) {
+            if (!line.startsWith("RESULT\t")) continue;
+            String[] parts = line.split("\\t", -1);
+            if (parts.length < 5) continue;
+            matches.add(new ImageMatch(parts[1], Boolean.parseBoolean(parts[2]),
+                    Boolean.parseBoolean(parts[3]), parts.length > 5 ? parts[5] : ""));
+        }
+        if (matches.isEmpty()) {
+            throw new IOException("未能识别签到表中的党员名单，请拍摄清晰、正对表格的照片");
+        }
+        return new ImageRecognitionResult(matches);
+    }
+
+    private record ImageMatch(String name, boolean recognized, boolean present, String evidence) {}
+
+    private record ImageRecognitionResult(List<ImageMatch> matches) {
+        private RecognitionResult toRecognitionResult(List<Member> members) {
+            List<String> recognizedNames = matches.stream().filter(ImageMatch::recognized).map(ImageMatch::name).toList();
+            List<String> absentNames = matches.stream().filter(match -> match.recognized() && !match.present()).map(ImageMatch::name).toList();
+            List<String> unmatchedNames = matches.stream().filter(match -> !match.recognized()).map(ImageMatch::name).toList();
+            Set<String> presentNames = matches.stream().filter(match -> match.recognized() && match.present())
+                    .map(ImageMatch::name).collect(java.util.stream.Collectors.toSet());
+            List<Member> matchedMembers = members.stream().filter(member -> presentNames.contains(member.getName())).toList();
+            return new RecognitionResult(recognizedNames, matchedMembers, unmatchedNames, absentNames);
         }
     }
 
