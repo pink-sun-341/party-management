@@ -173,6 +173,10 @@ public class PartyRepository {
                 activityId, originalName, storedPath, fileType);
     }
 
+    public boolean deleteActivityFile(long fileId) {
+        return jdbc.update("DELETE FROM activity_files WHERE id = ?", fileId) > 0;
+    }
+
     public List<ActivityFile> findActivityImages(long activityId) {
         return jdbc.query("""
                 SELECT id, original_name, file_type FROM activity_files

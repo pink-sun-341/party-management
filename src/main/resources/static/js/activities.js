@@ -8,10 +8,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const participantForm = document.querySelector('#participant-form');
     const attendanceForm = document.querySelector('#attendance-form');
     const activityFields = {
-        title: document.querySelector('#activity-title'), type: document.querySelector('#activity-type'),
-        activityDate: document.querySelector('#activity-date'), location: document.querySelector('#activity-location')
+        title: document.querySelector('#activity-title'),
+        type: document.querySelector('#activity-type'),
+        activityDate: document.querySelector('#activity-date'),
+        location: document.querySelector('#activity-location')
     };
+    const editorParticipantInputs = () => Array.from(document.querySelectorAll('#editor-participant-list input[type="checkbox"]'));
+    const participantInputs = () => Array.from(document.querySelectorAll('#participant-form input[type="checkbox"]'));
+    const editorImageInput = document.querySelector('#activity-editor-images');
+    const uploadImageInput = document.querySelector('#activity-images');
+    const editorPreview = document.querySelector('#editor-image-preview-list');
+    const uploadPreview = document.querySelector('#image-preview-list');
+    const editorStatus = document.querySelector('#activity-save-status');
+    const uploadStatus = document.querySelector('#image-upload-status');
+    const editorPreviewUrls = new Set();
+    const uploadPreviewUrls = new Set();
+    const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
     let currentActivityId = null;
+    let editingActivityId = null;
 
     const toggle = (modal, open) => {
         if (!modal) return;
@@ -19,32 +33,118 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.setAttribute('aria-hidden', String(!open));
     };
 
-    const openActivity = (row) => {
+    const clearPreview = (container, urls) => {
+        urls.forEach((url) => URL.revokeObjectURL(url));
+        urls.clear();
+        if (container) container.innerHTML = '';
+    };
+
+    const resetInput = (input) => {
+        if (input) input.value = '';
+    };
+
+    const resetEditor = () => {
+        editingActivityId = null;
+        activityForm?.reset();
+        if (activityFields.type) activityFields.type.value = '主题党日';
+        editorParticipantInputs().forEach((input) => { input.checked = false; });
+        resetInput(editorImageInput);
+        clearPreview(editorPreview, editorPreviewUrls);
+        if (editorStatus) editorStatus.textContent = '';
+    };
+
+    const validateImages = (files, maximum) => {
+        if (files.length > maximum) return `一次最多选择 ${maximum} 张图片。`;
+        for (const file of files) {
+            if (!allowedImageTypes.has((file.type || '').toLowerCase())) {
+                return `${file.name} 不是支持的图片格式。`;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                return `${file.name} 超过 10MB，无法上传。`;
+            }
+        }
+        return '';
+    };
+
+    const renderLocalPreviews = (files, container, urls) => {
+        clearPreview(container, urls);
+        files.forEach((file) => {
+            const tile = document.createElement('div');
+            tile.className = 'image-preview-tile';
+            const image = document.createElement('img');
+            const url = URL.createObjectURL(file);
+            urls.add(url);
+            image.src = url;
+            image.alt = file.name;
+            const name = document.createElement('small');
+            name.textContent = file.name;
+            tile.append(image, name);
+            container?.append(tile);
+        });
+    };
+
+    const responseJson = async (response) => {
+        const text = await response.text();
+        let body = {};
+        if (text) {
+            try { body = JSON.parse(text); } catch (ignored) { body = {}; }
+        }
+        if (!response.ok) throw new Error(body.message || '请求失败，请重试。');
+        return body;
+    };
+
+    const getCheckedIds = (inputs) => inputs.filter((input) => input.checked).map((input) => input.value);
+
+    const replaceParticipants = async (activityId, inputs) => {
+        const body = new FormData();
+        getCheckedIds(inputs).forEach((id) => body.append('memberIds', id));
+        return responseJson(await fetch(`/activities/${activityId}/participants`, { method: 'POST', body }));
+    };
+
+    const uploadImages = async (activityId, files) => {
+        if (!files.length) return [];
+        const body = new FormData();
+        files.forEach((file) => body.append('files', file));
+        return responseJson(await fetch(`/activities/${activityId}/images`, { method: 'POST', body }));
+    };
+
+    const openActivity = async (row) => {
         const editing = Boolean(row);
+        resetEditor();
+        editingActivityId = editing ? row.dataset.id : null;
         document.querySelector('#activity-modal-title').textContent = editing ? '编辑活动' : '新增活动';
         document.querySelector('#activity-submit').textContent = editing ? '保存修改' : '保存活动';
-        activityForm.action = editing ? `/activities/${row.dataset.id}` : '/activities';
         activityFields.title.value = editing ? row.dataset.title : '';
         activityFields.type.value = editing ? row.dataset.type : '主题党日';
         activityFields.activityDate.value = editing ? row.dataset.activityDate : '';
         activityFields.location.value = editing ? (row.dataset.location || '') : '';
         toggle(activityModal, true);
         activityFields.title.focus();
+        if (!editing) return;
+
+        if (editorStatus) editorStatus.textContent = '正在加载已关联的参与人……';
+        try {
+            const participants = await responseJson(await fetch(`/activities/${editingActivityId}/participants`));
+            const ids = new Set(participants.map((member) => String(member.id)));
+            editorParticipantInputs().forEach((input) => { input.checked = ids.has(input.value); });
+            if (editorStatus) editorStatus.textContent = '';
+        } catch (error) {
+            if (editorStatus) editorStatus.textContent = error.message;
+        }
     };
 
     const openParticipants = async (row) => {
         currentActivityId = row.dataset.id;
         document.querySelector('#participant-modal-title').textContent = `${row.dataset.title} · 活动参与人`;
-        document.querySelectorAll('#participant-form input[type="checkbox"]').forEach((input) => { input.checked = false; });
+        participantInputs().forEach((input) => { input.checked = false; });
+        resetInput(document.querySelector('#attendance-file'));
         document.querySelector('#recognition-result').hidden = true;
         document.querySelector('#attendance-status').textContent = '';
         toggle(participantModal, true);
         try {
-            const response = await fetch(`/activities/${currentActivityId}/participants`);
-            if (!response.ok) throw new Error('读取参与人失败');
-            const participants = await response.json();
+            const participants = await responseJson(await fetch(`/activities/${currentActivityId}/participants`));
             const ids = new Set(participants.map((member) => String(member.id)));
-            document.querySelectorAll('#participant-form input[type="checkbox"]').forEach((input) => { input.checked = ids.has(input.value); });
+            participantInputs().forEach((input) => { input.checked = ids.has(input.value); });
         } catch (error) {
             document.querySelector('#attendance-status').textContent = error.message;
         }
@@ -67,10 +167,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetch(`/activities/${currentActivityId}/participants`),
                 fetch(`/activities/${currentActivityId}/images`)
             ]);
-            if (!participantResponse.ok) throw new Error('读取参与人失败');
-            if (!imageResponse.ok) throw new Error('读取活动图片失败');
-            const participants = await participantResponse.json();
-            const images = await imageResponse.json();
+            const participants = await responseJson(participantResponse);
+            const images = await responseJson(imageResponse);
             document.querySelector('#detail-count').textContent = `${participants.length} 人`;
             if (!participants.length) {
                 list.innerHTML = '<p class="detail-empty">暂未关联参与党员。</p>';
@@ -85,18 +183,57 @@ document.addEventListener('DOMContentLoaded', () => {
             renderDetailImages(images);
         } catch (error) {
             document.querySelector('#detail-count').textContent = '读取失败';
-            list.innerHTML = `<p class="detail-empty">${error.message}</p>`;
+            list.innerHTML = `<p class="detail-empty">${escapeHtml(error.message)}</p>`;
             imageList.innerHTML = '<p class="detail-empty">活动图片暂时无法读取。</p>';
         }
     };
 
-    const openImageUpload = (row) => {
+    const renderExistingImages = (images) => {
+        const list = document.querySelector('#image-existing-list');
+        list.innerHTML = '';
+        if (!images.length) {
+            list.innerHTML = '<p class="detail-empty">暂未上传活动图片。</p>';
+            return;
+        }
+        images.forEach((item) => {
+            const tile = document.createElement('div');
+            tile.className = 'image-preview-tile existing-image-tile';
+            tile.dataset.fileId = item.id;
+            const image = document.createElement('img');
+            image.src = item.url;
+            image.alt = item.originalName || '活动图片';
+            const footer = document.createElement('div');
+            footer.className = 'existing-image-footer';
+            const name = document.createElement('small');
+            name.textContent = item.originalName || '活动图片';
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'image-remove-button';
+            remove.dataset.fileId = item.id;
+            remove.textContent = '删除';
+            remove.setAttribute('aria-label', `删除${item.originalName || '活动图片'}`);
+            footer.append(name, remove);
+            tile.append(image, footer);
+            list.append(tile);
+        });
+    };
+
+    const openImageUpload = async (row) => {
         currentActivityId = row.dataset.id;
         document.querySelector('#image-modal-title').textContent = `${row.dataset.title} · 活动图片`;
-        document.querySelector('#activity-images').value = '';
-        document.querySelector('#image-preview-list').innerHTML = '';
-        document.querySelector('#image-upload-status').textContent = '';
+        resetInput(uploadImageInput);
+        clearPreview(uploadPreview, uploadPreviewUrls);
+        uploadStatus.textContent = '正在加载已有图片……';
+        document.querySelector('#image-existing-list').innerHTML = '<p class="detail-loading">正在加载图片……</p>';
         toggle(imageModal, true);
+        try {
+            const images = await responseJson(await fetch(`/activities/${currentActivityId}/images`));
+            renderExistingImages(images);
+            uploadStatus.textContent = '';
+        } catch (error) {
+            uploadStatus.textContent = error.message;
+            document.querySelector('#image-existing-list').innerHTML = '<p class="detail-empty">已有图片暂时无法读取。</p>';
+        }
     };
 
     document.querySelector('[data-open-activity-modal]')?.addEventListener('click', () => openActivity());
@@ -104,55 +241,153 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.participant-button').forEach((button) => button.addEventListener('click', () => openParticipants(button.closest('.activity-row'))));
     document.querySelectorAll('.detail-button').forEach((button) => button.addEventListener('click', () => openDetails(button.closest('.activity-row'))));
     document.querySelectorAll('.image-button').forEach((button) => button.addEventListener('click', () => openImageUpload(button.closest('.activity-row'))));
-    document.querySelectorAll('[data-close-activity-modal]').forEach((button) => button.addEventListener('click', () => toggle(activityModal, false)));
+    document.querySelectorAll('[data-close-activity-modal]').forEach((button) => button.addEventListener('click', () => { resetEditor(); toggle(activityModal, false); }));
     document.querySelectorAll('[data-close-participant-modal]').forEach((button) => button.addEventListener('click', () => toggle(participantModal, false)));
     document.querySelectorAll('[data-close-detail-modal]').forEach((button) => button.addEventListener('click', () => toggle(detailModal, false)));
-    document.querySelectorAll('[data-close-image-modal]').forEach((button) => button.addEventListener('click', () => toggle(imageModal, false)));
-    document.querySelector('[data-close-lightbox]')?.addEventListener('click', () => toggle(lightbox, false));
-    lightbox?.addEventListener('click', (event) => { if (event.target === lightbox) toggle(lightbox, false); });
-    [activityModal, participantModal, detailModal, imageModal].forEach((modal) => modal?.addEventListener('click', (event) => { if (event.target === modal) toggle(modal, false); }));
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggle(activityModal, false); toggle(participantModal, false); toggle(detailModal, false); toggle(imageModal, false); toggle(lightbox, false); } });
+    document.querySelectorAll('[data-close-image-modal]').forEach((button) => button.addEventListener('click', () => { clearPreview(uploadPreview, uploadPreviewUrls); resetInput(uploadImageInput); toggle(imageModal, false); }));
+    document.querySelector('[data-close-lightbox]')?.addEventListener('click', closeLightbox);
+    lightbox?.addEventListener('click', (event) => { if (event.target === lightbox) closeLightbox(); });
+    [activityModal, participantModal, detailModal, imageModal].forEach((modal) => modal?.addEventListener('click', (event) => {
+        if (event.target !== modal) return;
+        if (modal === activityModal) resetEditor();
+        if (modal === imageModal) { clearPreview(uploadPreview, uploadPreviewUrls); resetInput(uploadImageInput); }
+        toggle(modal, false);
+    }));
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (activityModal?.classList.contains('is-open')) resetEditor();
+        if (imageModal?.classList.contains('is-open')) { clearPreview(uploadPreview, uploadPreviewUrls); resetInput(uploadImageInput); }
+        [activityModal, participantModal, detailModal, imageModal].forEach((modal) => toggle(modal, false));
+        closeLightbox();
+    });
 
-    document.querySelector('#activity-images')?.addEventListener('change', (event) => {
+    editorImageInput?.addEventListener('change', (event) => {
         const files = Array.from(event.target.files || []);
-        const preview = document.querySelector('#image-preview-list');
-        const status = document.querySelector('#image-upload-status');
-        preview.innerHTML = '';
-        if (files.length > 8) {
-            status.textContent = '一次最多选择 8 张图片。';
-            event.target.value = '';
+        const error = validateImages(files, 8);
+        clearPreview(editorPreview, editorPreviewUrls);
+        if (error) {
+            editorStatus.textContent = error;
+            resetInput(editorImageInput);
             return;
         }
-        status.textContent = files.length ? `已选择 ${files.length} 张图片，确认预览无误后上传。` : '';
-        files.forEach((file) => {
-            if (!file.type.startsWith('image/')) return;
-            const tile = document.createElement('div');
-            tile.className = 'image-preview-tile';
-            const image = document.createElement('img');
-            image.alt = file.name;
-            image.src = URL.createObjectURL(file);
-            const name = document.createElement('small');
-            name.textContent = file.name;
-            tile.append(image, name);
-            preview.append(tile);
-        });
+        editorStatus.textContent = files.length ? `已选择 ${files.length} 张图片。` : '';
+        renderLocalPreviews(files, editorPreview, editorPreviewUrls);
+    });
+
+    uploadImageInput?.addEventListener('change', (event) => {
+        const files = Array.from(event.target.files || []);
+        const error = validateImages(files, 8);
+        clearPreview(uploadPreview, uploadPreviewUrls);
+        if (error) {
+            uploadStatus.textContent = error;
+            resetInput(uploadImageInput);
+            return;
+        }
+        uploadStatus.textContent = files.length ? `已选择 ${files.length} 张图片，确认预览无误后上传。` : '';
+        renderLocalPreviews(files, uploadPreview, uploadPreviewUrls);
+    });
+
+    activityForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const submit = document.querySelector('#activity-submit');
+        const files = Array.from(editorImageInput?.files || []);
+        const validationError = validateImages(files, 8);
+        if (validationError) { editorStatus.textContent = validationError; return; }
+        submit.disabled = true;
+        editorStatus.textContent = '正在保存活动信息……';
+        try {
+            const body = new FormData();
+            Object.values(activityFields).forEach((field) => body.append(field.name, field.value));
+            const endpoint = editingActivityId ? `/api/activities/${editingActivityId}` : '/api/activities';
+            const method = editingActivityId ? 'PUT' : 'POST';
+            const saved = await responseJson(await fetch(endpoint, { method, body }));
+            const activityId = saved.id || editingActivityId;
+            await replaceParticipants(activityId, editorParticipantInputs());
+            if (files.length) await uploadImages(activityId, files);
+            clearPreview(editorPreview, editorPreviewUrls);
+            resetInput(editorImageInput);
+            window.location.reload();
+        } catch (error) {
+            editorStatus.textContent = error.message;
+            submit.disabled = false;
+        }
+    });
+
+    document.querySelector('#image-existing-list')?.addEventListener('click', async (event) => {
+        const button = event.target.closest('.image-remove-button');
+        if (!button) return;
+        if (!window.confirm('确定删除这张活动图片吗？')) return;
+        button.disabled = true;
+        try {
+            const response = await fetch(`/activities/files/${button.dataset.fileId}`, { method: 'DELETE' });
+            await responseJson(response);
+            button.closest('.existing-image-tile')?.remove();
+            if (!document.querySelector('#image-existing-list .existing-image-tile')) {
+                document.querySelector('#image-existing-list').innerHTML = '<p class="detail-empty">暂未上传活动图片。</p>';
+            }
+            uploadStatus.textContent = '图片已删除。';
+        } catch (error) {
+            button.disabled = false;
+            uploadStatus.textContent = error.message;
+        }
     });
 
     document.querySelector('#upload-images-submit')?.addEventListener('click', async () => {
-        const input = document.querySelector('#activity-images');
-        const status = document.querySelector('#image-upload-status');
-        if (!input.files.length) { status.textContent = '请先选择活动图片。'; return; }
-        const body = new FormData();
-        Array.from(input.files).forEach((file) => body.append('files', file));
-        status.textContent = '正在上传图片，请稍候……';
+        const files = Array.from(uploadImageInput?.files || []);
+        if (!currentActivityId) return;
+        const validationError = validateImages(files, 8);
+        if (validationError) { uploadStatus.textContent = validationError; return; }
+        if (!files.length) { uploadStatus.textContent = '请先选择活动图片。'; return; }
+        const submit = document.querySelector('#upload-images-submit');
+        submit.disabled = true;
+        uploadStatus.textContent = '正在上传图片，请稍候……';
         try {
-            const response = await fetch(`/activities/${currentActivityId}/images`, { method: 'POST', body });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || '图片上传失败');
-            status.textContent = `上传完成，共保存 ${result.length} 张活动图片。`;
-            document.querySelector('#image-preview-list').innerHTML = '';
-            input.value = '';
-        } catch (error) { status.textContent = error.message; }
+            const images = await uploadImages(currentActivityId, files);
+            renderExistingImages(images);
+            clearPreview(uploadPreview, uploadPreviewUrls);
+            resetInput(uploadImageInput);
+            uploadStatus.textContent = `上传完成，共保存 ${images.length} 张活动图片。`;
+        } catch (error) {
+            uploadStatus.textContent = error.message;
+        } finally {
+            submit.disabled = false;
+        }
+    });
+
+    participantForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = document.querySelector('#attendance-status');
+        try {
+            const result = await replaceParticipants(currentActivityId, participantInputs());
+            updateCount(result.participantCount);
+            status.textContent = '参与人已保存。';
+        } catch (error) {
+            status.textContent = error.message;
+        }
+    });
+
+    attendanceForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const file = document.querySelector('#attendance-file');
+        const status = document.querySelector('#attendance-status');
+        if (!file.files.length) return;
+        status.textContent = '正在识别签到表，请稍候……';
+        const body = new FormData();
+        body.append('file', file.files[0]);
+        try {
+            const result = await responseJson(await fetch(`/activities/${currentActivityId}/attendance`, { method: 'POST', body }));
+            const matched = new Set(result.matchedNames);
+            participantInputs().forEach((input) => { input.checked = matched.has(input.dataset.memberName); });
+            updateCount(result.participantCount);
+            document.querySelector('#recognition-result').hidden = false;
+            document.querySelector('#matched-result').textContent = result.matchedNames.length ? `已匹配：${result.matchedNames.join('、')}` : '已匹配：无';
+            const unmatched = document.querySelector('#unmatched-result');
+            unmatched.textContent = result.unmatchedNames.length ? `未匹配：${result.unmatchedNames.join('、')}（请核对姓名）` : '未匹配：无';
+            unmatched.classList.toggle('unmatched', result.unmatchedNames.length > 0);
+            status.textContent = '识别完成，参与人已更新。';
+        } catch (error) {
+            status.textContent = error.message;
+        }
     });
 
     function renderDetailImages(images) {
@@ -178,38 +413,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    participantForm?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const response = await fetch(`/activities/${currentActivityId}/participants`, { method: 'POST', body: new FormData(participantForm) });
-        if (!response.ok) { document.querySelector('#attendance-status').textContent = '保存参与人失败，请重试。'; return; }
-        const result = await response.json();
-        updateCount(result.participantCount);
-        document.querySelector('#attendance-status').textContent = '参与人已保存。';
-    });
-
-    attendanceForm?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const file = document.querySelector('#attendance-file');
-        const status = document.querySelector('#attendance-status');
-        if (!file.files.length) return;
-        status.textContent = '正在识别签到表，请稍候……';
-        const body = new FormData();
-        body.append('file', file.files[0]);
-        try {
-            const response = await fetch(`/activities/${currentActivityId}/attendance`, { method: 'POST', body });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || '识别失败，请检查文件格式。');
-            const matched = new Set(result.matchedNames);
-            document.querySelectorAll('#participant-form input[type="checkbox"]').forEach((input) => { input.checked = matched.has(input.dataset.memberName); });
-            updateCount(result.participantCount);
-            document.querySelector('#recognition-result').hidden = false;
-            document.querySelector('#matched-result').textContent = result.matchedNames.length ? `已匹配：${result.matchedNames.join('、')}` : '已匹配：无';
-            const unmatched = document.querySelector('#unmatched-result');
-            unmatched.textContent = result.unmatchedNames.length ? `未匹配：${result.unmatchedNames.join('、')}（请核对姓名）` : '未匹配：无';
-            unmatched.classList.toggle('unmatched', result.unmatchedNames.length > 0);
-            status.textContent = '识别完成，参与人已更新。';
-        } catch (error) { status.textContent = error.message; }
-    });
+    function closeLightbox() {
+        toggle(lightbox, false);
+        document.querySelector('#lightbox-image')?.removeAttribute('src');
+    }
 
     function updateCount(count) {
         const element = document.querySelector(`[data-count-id="${currentActivityId}"]`);

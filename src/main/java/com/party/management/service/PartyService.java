@@ -147,6 +147,23 @@ public class PartyService {
         return file == null ? null : file.fileType();
     }
 
+    public boolean deleteActivityFile(long fileId) throws IOException {
+        PartyRepository.ActivityFileRecord file = repository.findActivityFile(fileId);
+        if (file == null || file.fileType() == null || !file.fileType().startsWith("image/")) {
+            return false;
+        }
+        Path path = Path.of(file.storedPath()).toAbsolutePath().normalize();
+        Path root = Path.of(System.getProperty("user.dir"), "data", "activity-files").toAbsolutePath().normalize();
+        if (!path.startsWith(root)) {
+            return false;
+        }
+        boolean deleted = repository.deleteActivityFile(fileId);
+        if (deleted) {
+            Files.deleteIfExists(path);
+        }
+        return deleted;
+    }
+
     public byte[] exportActivitiesCsv(List<Activity> activities) {
         StringBuilder csv = new StringBuilder("日期,活动主题,活动类型,地点,参加人数,已匹配党员\n");
         for (Activity activity : activities) {
