@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @Service
 public class MacSignInRecognitionService implements SignInRecognitionService {
     private static final long MAX_FILE_BYTES = 10 * 1024 * 1024;
-    private static final Duration OCR_TIMEOUT = Duration.ofSeconds(45);
+    private static final Duration OCR_TIMEOUT = Duration.ofSeconds(90);
 
     @Override
     public RecognitionResult recognize(MultipartFile file, List<Member> members) throws IOException {

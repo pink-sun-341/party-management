@@ -407,12 +407,14 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         const file = document.querySelector('#attendance-file');
         const status = document.querySelector('#attendance-status');
+        const submit = attendanceForm.querySelector('button[type="submit"]');
         if (!file.files.length) return;
-        status.textContent = '正在识别签到表，请稍候……';
+        submit.disabled = true;
+        status.textContent = '正在识别签到表，首次识别可能需要几十秒，请勿关闭窗口……';
         const body = new FormData();
         body.append('file', file.files[0]);
         try {
-            const result = await fetchJson(`/activities/${currentActivityId}/attendance`, { method: 'POST', body });
+            const result = await fetchJson(`/activities/${currentActivityId}/attendance`, { method: 'POST', body }, 120000);
             const matched = new Set(result.matchedNames);
             participantInputs().forEach((input) => { input.checked = matched.has(input.dataset.memberName); });
             updateCount(result.participantCount);
@@ -426,6 +428,8 @@ document.addEventListener('DOMContentLoaded', () => {
             status.textContent = '识别完成，参与人已更新。';
         } catch (error) {
             status.textContent = error.message;
+        } finally {
+            submit.disabled = false;
         }
     });
 
