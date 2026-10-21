@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const editorParticipantInputs = () => Array.from(document.querySelectorAll('#editor-participant-list input[type="checkbox"]'));
     const participantInputs = () => Array.from(document.querySelectorAll('#participant-form input[type="checkbox"]'));
     const memberSearchInputs = () => Array.from(document.querySelectorAll('[data-member-search]'));
+    const memberSearchButtons = () => Array.from(document.querySelectorAll('[data-member-search-button]'));
     const editorImageInput = document.querySelector('#activity-editor-images');
     const uploadImageInput = document.querySelector('#activity-images');
     const editorPreview = document.querySelector('#editor-image-preview-list');
@@ -326,7 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
         closeLightbox();
     });
 
-    memberSearchInputs().forEach((input) => input.addEventListener('input', () => applyMemberFilter(input)));
+    memberSearchButtons().forEach((button) => button.addEventListener('click', () => {
+        const input = memberSearchInputs().find((item) => item.dataset.memberSearch === button.dataset.memberSearchButton);
+        if (!input) return;
+        applyMemberFilter(input);
+        input.focus();
+    }));
+    memberSearchInputs().forEach((input) => input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        document.querySelector(`[data-member-search-button="${input.dataset.memberSearch}"]`)?.click();
+    }));
     resetMemberFilters();
 
     editorImageInput?.addEventListener('change', (event) => {
