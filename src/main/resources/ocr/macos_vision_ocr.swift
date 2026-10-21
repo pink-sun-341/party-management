@@ -77,8 +77,9 @@ pixels.withUnsafeMutableBytes { rawBuffer in
     context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
 
     func inkScore(_ normalized: CGRect) -> Double {
-        let insetX = normalized.width * 0.12
-        let insetY = normalized.height * 0.15
+        // Ignore the printed cell border and sample only the writing area.
+        let insetX = normalized.width * 0.16
+        let insetY = normalized.height * 0.28
         let area = normalized.insetBy(dx: insetX, dy: insetY)
         let x1 = max(0, Int(area.minX * CGFloat(image.width)))
         let x2 = min(image.width - 1, Int(area.maxX * CGFloat(image.width)))
@@ -95,7 +96,7 @@ pixels.withUnsafeMutableBytes { rawBuffer in
                 let green = Int(pixelBuffer[index + 1])
                 let blue = Int(pixelBuffer[index + 2])
                 let luminance = (299 * red + 587 * green + 114 * blue) / 1000
-                if luminance < 165 { dark += 1 }
+                if luminance < 135 { dark += 1 }
                 total += 1
             }
         }
@@ -115,14 +116,15 @@ pixels.withUnsafeMutableBytes { rawBuffer in
         let leftGroup = centerX < 0.5
         let signMinX = leftGroup ? max(box.maxX + 0.015, 0.25) : max(box.maxX + 0.015, 0.66)
         let signMaxX = leftGroup ? min(signMinX + 0.19, 0.50) : min(signMinX + 0.19, 0.98)
-        let rowMinY = max(0, box.midY - 0.015)
-        let rowMaxY = min(1, box.midY + 0.015)
+        let rowMinY = max(0, box.midY - 0.011)
+        let rowMaxY = min(1, box.midY + 0.011)
         let signBox = CGRect(x: signMinX, y: rowMinY, width: max(0.01, signMaxX - signMinX), height: rowMaxY - rowMinY)
         let score = inkScore(signBox)
         let signItems = items.filter { overlap($0.box, signBox) }
         let evidence = signItems.map { compact($0.text) }.joined(separator: ",")
         let slashOnly = isSlashOnly(evidence)
-        let present = score >= 0.018 && !slashOnly
+        let explicitAttendance = evidence.contains("线上") || evidence.contains("在线") || evidence.contains("参加") || evidence.contains("出席")
+        let present = (explicitAttendance || score >= 0.035) && !slashOnly
         print(String(format: "RESULT\t%@\ttrue\t%@\t%.4f\t%@", escaped(member), present ? "true" : "false", score, escaped(evidence)))
     }
 }
