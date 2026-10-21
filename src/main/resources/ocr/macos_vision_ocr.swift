@@ -76,31 +76,51 @@ pixels.withUnsafeMutableBytes { rawBuffer in
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { exit(6) }
     context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
 
-    func inkScore(_ normalized: CGRect) -> Double {
+    struct InkMetrics {
+        let density: Double
+        let rowCoverage: Double
+        let columnCoverage: Double
+    }
+
+    func inkMetrics(_ normalized: CGRect) -> InkMetrics {
         // Ignore the printed cell border and sample only the writing area.
-        let insetX = normalized.width * 0.16
-        let insetY = normalized.height * 0.28
+        // A border can still be dark after cropping, so keep its horizontal
+        // and vertical coverage to reject straight table lines as ink.
+        let insetX = normalized.width * 0.28
+        let insetY = normalized.height * 0.40
         let area = normalized.insetBy(dx: insetX, dy: insetY)
         let x1 = max(0, Int(area.minX * CGFloat(image.width)))
         let x2 = min(image.width - 1, Int(area.maxX * CGFloat(image.width)))
         let y1 = max(0, Int(area.minY * CGFloat(image.height)))
         let y2 = min(image.height - 1, Int(area.maxY * CGFloat(image.height)))
-        if x2 <= x1 || y2 <= y1 { return 0 }
+        if x2 <= x1 || y2 <= y1 { return InkMetrics(density: 0, rowCoverage: 0, columnCoverage: 0) }
         var dark = 0
         var total = 0
-        let stride = max(1, min(image.width, image.height) / 900)
-        for y in Swift.stride(from: y1, through: y2, by: stride) {
-            for x in Swift.stride(from: x1, through: x2, by: stride) {
+        var darkRows = Set<Int>()
+        var darkColumns = Set<Int>()
+        let sampleStride = max(1, min(image.width, image.height) / 900)
+        for y in Swift.stride(from: y1, through: y2, by: sampleStride) {
+            for x in Swift.stride(from: x1, through: x2, by: sampleStride) {
                 let index = (y * image.width + x) * 4
                 let red = Int(pixelBuffer[index])
                 let green = Int(pixelBuffer[index + 1])
                 let blue = Int(pixelBuffer[index + 2])
                 let luminance = (299 * red + 587 * green + 114 * blue) / 1000
-                if luminance < 135 { dark += 1 }
+                if luminance < 145 {
+                    dark += 1
+                    darkRows.insert(y)
+                    darkColumns.insert(x)
+                }
                 total += 1
             }
         }
-        return total == 0 ? 0 : Double(dark) / Double(total)
+        let rowCount = max(1, ((y2 - y1) / sampleStride) + 1)
+        let columnCount = max(1, ((x2 - x1) / sampleStride) + 1)
+        return InkMetrics(
+            density: total == 0 ? 0 : Double(dark) / Double(total),
+            rowCoverage: Double(darkRows.count) / Double(rowCount),
+            columnCoverage: Double(darkColumns.count) / Double(columnCount)
+        )
     }
 
     for member in members {
@@ -119,12 +139,14 @@ pixels.withUnsafeMutableBytes { rawBuffer in
         let rowMinY = max(0, box.midY - 0.011)
         let rowMaxY = min(1, box.midY + 0.011)
         let signBox = CGRect(x: signMinX, y: rowMinY, width: max(0.01, signMaxX - signMinX), height: rowMaxY - rowMinY)
-        let score = inkScore(signBox)
+        let metrics = inkMetrics(signBox)
+        let score = metrics.density
         let signItems = items.filter { overlap($0.box, signBox) }
         let evidence = signItems.map { compact($0.text) }.joined(separator: ",")
         let slashOnly = isSlashOnly(evidence)
         let explicitAttendance = evidence.contains("线上") || evidence.contains("在线") || evidence.contains("参加") || evidence.contains("出席")
-        let present = (explicitAttendance || score >= 0.035) && !slashOnly
+        let hasHandwriting = score >= 0.055 && metrics.rowCoverage >= 0.14 && metrics.columnCoverage >= 0.10
+        let present = (explicitAttendance || hasHandwriting) && !slashOnly
         print(String(format: "RESULT\t%@\ttrue\t%@\t%.4f\t%@", escaped(member), present ? "true" : "false", score, escaped(evidence)))
     }
 }
