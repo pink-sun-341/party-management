@@ -93,19 +93,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return body;
     };
 
+    const fetchJson = async (url, options = {}, timeout = 10000) => {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeout);
+        try {
+            return await responseJson(await fetch(url, { ...options, signal: controller.signal }));
+        } catch (error) {
+            if (error.name === 'AbortError') throw new Error('请求超时，请确认服务已启动后重试。');
+            throw error;
+        } finally {
+            window.clearTimeout(timer);
+        }
+    };
+
     const getCheckedIds = (inputs) => inputs.filter((input) => input.checked).map((input) => input.value);
 
     const replaceParticipants = async (activityId, inputs) => {
         const body = new FormData();
         getCheckedIds(inputs).forEach((id) => body.append('memberIds', id));
-        return responseJson(await fetch(`/activities/${activityId}/participants`, { method: 'POST', body }));
+        return fetchJson(`/activities/${activityId}/participants`, { method: 'POST', body });
     };
 
     const uploadImages = async (activityId, files) => {
         if (!files.length) return [];
         const body = new FormData();
         files.forEach((file) => body.append('files', file));
-        return responseJson(await fetch(`/activities/${activityId}/images`, { method: 'POST', body }));
+        return fetchJson(`/activities/${activityId}/images`, { method: 'POST', body });
     };
 
     const openActivity = async (row) => {
@@ -124,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (editorStatus) editorStatus.textContent = '正在加载已关联的参与人……';
         try {
-            const participants = await responseJson(await fetch(`/activities/${editingActivityId}/participants`));
+            const participants = await fetchJson(`/activities/${editingActivityId}/participants`);
             const ids = new Set(participants.map((member) => String(member.id)));
             editorParticipantInputs().forEach((input) => { input.checked = ids.has(input.value); });
             if (editorStatus) editorStatus.textContent = '';
@@ -142,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('#attendance-status').textContent = '';
         toggle(participantModal, true);
         try {
-            const participants = await responseJson(await fetch(`/activities/${currentActivityId}/participants`));
+            const participants = await fetchJson(`/activities/${currentActivityId}/participants`);
             const ids = new Set(participants.map((member) => String(member.id)));
             participantInputs().forEach((input) => { input.checked = ids.has(input.value); });
         } catch (error) {
@@ -162,13 +175,15 @@ document.addEventListener('DOMContentLoaded', () => {
         list.innerHTML = '<p class="detail-loading">正在加载参与人……</p>';
         imageList.innerHTML = '<p class="detail-loading">正在加载活动图片……</p>';
         toggle(detailModal, true);
-        try {
-            const [participantResponse, imageResponse] = await Promise.all([
-                fetch(`/activities/${currentActivityId}/participants`),
-                fetch(`/activities/${currentActivityId}/images`)
-            ]);
-            const participants = await responseJson(participantResponse);
-            const images = await responseJson(imageResponse);
+        const [participantsResult, imagesResult] = await Promise.all([
+            fetchJson(`/activities/${currentActivityId}/participants`).then((data) => ({ data })).catch((error) => ({ error })),
+            fetchJson(`/activities/${currentActivityId}/images`).then((data) => ({ data })).catch((error) => ({ error }))
+        ]);
+        if (participantsResult.error) {
+            document.querySelector('#detail-count').textContent = '读取失败';
+            list.innerHTML = `<p class="detail-empty">${escapeHtml(participantsResult.error.message)}</p>`;
+        } else {
+            const participants = participantsResult.data;
             document.querySelector('#detail-count').textContent = `${participants.length} 人`;
             if (!participants.length) {
                 list.innerHTML = '<p class="detail-empty">暂未关联参与党员。</p>';
@@ -180,11 +195,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     return `<div class="detail-participant"><span class="detail-avatar">${name.substring(0, 1)}</span><span><b>${name}</b><small>${status}${phone}</small></span></div>`;
                 }).join('');
             }
-            renderDetailImages(images);
-        } catch (error) {
-            document.querySelector('#detail-count').textContent = '读取失败';
-            list.innerHTML = `<p class="detail-empty">${escapeHtml(error.message)}</p>`;
-            imageList.innerHTML = '<p class="detail-empty">活动图片暂时无法读取。</p>';
+        }
+        if (imagesResult.error) {
+            document.querySelector('#detail-image-count').textContent = '读取失败';
+            imageList.innerHTML = `<p class="detail-empty">${escapeHtml(imagesResult.error.message)}</p>`;
+        } else {
+            renderDetailImages(imagesResult.data);
         }
     };
 
@@ -227,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('#image-existing-list').innerHTML = '<p class="detail-loading">正在加载图片……</p>';
         toggle(imageModal, true);
         try {
-            const images = await responseJson(await fetch(`/activities/${currentActivityId}/images`));
+            const images = await fetchJson(`/activities/${currentActivityId}/images`);
             renderExistingImages(images);
             uploadStatus.textContent = '';
         } catch (error) {
@@ -300,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Object.values(activityFields).forEach((field) => body.append(field.name, field.value));
             const endpoint = editingActivityId ? `/api/activities/${editingActivityId}` : '/api/activities';
             const method = editingActivityId ? 'PUT' : 'POST';
-            const saved = await responseJson(await fetch(endpoint, { method, body }));
+            const saved = await fetchJson(endpoint, { method, body });
             const activityId = saved.id || editingActivityId;
             await replaceParticipants(activityId, editorParticipantInputs());
             if (files.length) await uploadImages(activityId, files);
@@ -375,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const body = new FormData();
         body.append('file', file.files[0]);
         try {
-            const result = await responseJson(await fetch(`/activities/${currentActivityId}/attendance`, { method: 'POST', body }));
+            const result = await fetchJson(`/activities/${currentActivityId}/attendance`, { method: 'POST', body });
             const matched = new Set(result.matchedNames);
             participantInputs().forEach((input) => { input.checked = matched.has(input.dataset.memberName); });
             updateCount(result.participantCount);
