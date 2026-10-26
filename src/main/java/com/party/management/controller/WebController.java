@@ -47,11 +47,28 @@ public class WebController {
     @GetMapping("/members")
     public String members(@RequestParam(name = "keyword", required = false) String keyword,
                           @RequestParam(name = "status", required = false) String status,
+                          @RequestParam(name = "page", defaultValue = "1") int page,
                           Model model) {
-        model.addAttribute("members", service.members(keyword, status));
+        final int pageSize = 10;
+        String selectedKeyword = keyword == null ? "" : keyword.trim();
+        String selectedStatus = status == null ? "" : status.trim();
+        long resultTotal = service.countMembers(selectedKeyword, selectedStatus);
+        int totalPages = Math.max(1, (int) ((resultTotal + pageSize - 1) / pageSize));
+        int currentPage = Math.min(Math.max(1, page), totalPages);
+        List<Member> pageMembers = service.members(selectedKeyword, selectedStatus, currentPage, pageSize);
+        int pageStart = resultTotal == 0 ? 0 : (currentPage - 1) * pageSize + 1;
+        int pageEnd = Math.min(currentPage * pageSize, (int) resultTotal);
+        model.addAttribute("members", pageMembers);
+        model.addAttribute("memberTotal", service.countMembers());
+        model.addAttribute("resultTotal", resultTotal);
+        model.addAttribute("currentPage", currentPage);
+        model.addAttribute("totalPages", totalPages);
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageStart", pageStart);
+        model.addAttribute("pageEnd", pageEnd);
         model.addAttribute("member", new Member());
-        model.addAttribute("keyword", keyword == null ? "" : keyword);
-        model.addAttribute("selectedStatus", status == null ? "" : status);
+        model.addAttribute("keyword", selectedKeyword);
+        model.addAttribute("selectedStatus", selectedStatus);
         model.addAttribute("editMode", false);
         model.addAttribute("statusOptions", memberStatusOptions());
         return "members";
@@ -70,6 +87,14 @@ public class WebController {
             return "redirect:/members";
         }
         model.addAttribute("members", service.members());
+        long memberTotal = service.countMembers();
+        model.addAttribute("memberTotal", memberTotal);
+        model.addAttribute("resultTotal", memberTotal);
+        model.addAttribute("currentPage", 1);
+        model.addAttribute("totalPages", 1);
+        model.addAttribute("pageSize", memberTotal);
+        model.addAttribute("pageStart", memberTotal == 0 ? 0 : 1);
+        model.addAttribute("pageEnd", memberTotal);
         model.addAttribute("member", member);
         model.addAttribute("keyword", "");
         model.addAttribute("selectedStatus", "");

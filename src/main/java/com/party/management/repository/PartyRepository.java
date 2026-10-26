@@ -31,8 +31,28 @@ public class PartyRepository {
     }
 
     public List<Member> findMembers(String keyword, String status) {
+        return findMembers(keyword, status, 0, Integer.MAX_VALUE);
+    }
+
+    public long countMembers(String keyword, String status) {
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM members WHERE 1 = 1");
+        List<Object> args = new java.util.ArrayList<>();
+        appendMemberFilters(sql, args, keyword, status);
+        Long count = jdbc.queryForObject(sql.toString(), Long.class, args.toArray());
+        return count == null ? 0 : count;
+    }
+
+    public List<Member> findMembers(String keyword, String status, int offset, int limit) {
         StringBuilder sql = new StringBuilder("SELECT * FROM members WHERE 1 = 1");
         List<Object> args = new java.util.ArrayList<>();
+        appendMemberFilters(sql, args, keyword, status);
+        sql.append(" ORDER BY name LIMIT ? OFFSET ?");
+        args.add(limit);
+        args.add(offset);
+        return jdbc.query(sql.toString(), (rs, rowNum) -> member(rs), args.toArray());
+    }
+
+    private static void appendMemberFilters(StringBuilder sql, List<Object> args, String keyword, String status) {
         if (keyword != null && !keyword.isBlank()) {
             sql.append(" AND (name LIKE ? OR phone LIKE ?)");
             String pattern = "%" + keyword.trim() + "%";
@@ -43,12 +63,13 @@ public class PartyRepository {
             sql.append(" AND status = ?");
             args.add(status);
         }
-        sql.append(" ORDER BY name");
-        return jdbc.query(sql.toString(), (rs, rowNum) -> new Member(
-                rs.getLong("id"), rs.getString("name"), rs.getString("gender"),
+    }
+
+    private static Member member(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new Member(rs.getLong("id"), rs.getString("name"), rs.getString("gender"),
                 rs.getString("phone"), rs.getString("status"), date(rs, "application_date"),
                 date(rs, "activist_date"), date(rs, "development_object_date"),
-                date(rs, "probationary_date"), date(rs, "full_member_date")), args.toArray());
+                date(rs, "probationary_date"), date(rs, "full_member_date"));
     }
 
     public Member findMember(long id) {

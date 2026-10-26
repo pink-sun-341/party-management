@@ -35,6 +35,12 @@ public class PartyService {
     public long countMembers() { return repository.countMembers(); }
     public List<Member> members() { return repository.findMembers(); }
     public List<Member> members(String keyword, String status) { return repository.findMembers(keyword, status); }
+    public long countMembers(String keyword, String status) { return repository.countMembers(keyword, status); }
+    public List<Member> members(String keyword, String status, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, pageSize);
+        return repository.findMembers(keyword, status, (safePage - 1) * safePageSize, safePageSize);
+    }
     public Member member(long id) { return repository.findMember(id); }
     public void addMember(Member member) { repository.saveMember(member); }
     public boolean updateMember(Member member) { return repository.updateMember(member); }

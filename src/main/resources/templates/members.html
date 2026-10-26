@@ -26,12 +26,12 @@
             <h1>党员档案</h1>
             <p>统一管理党员基础信息、组织关系和发展阶段记录。</p>
         </div>
-        <div class="hero-mark"><span th:text="${#lists.size(members)}">0</span><small>名党员</small></div>
+        <div class="hero-mark"><span th:text="${memberTotal}">0</span><small>名党员</small></div>
     </section>
 
     <section class="member-workspace">
         <div class="workspace-toolbar">
-            <div><h2>全部党员</h2><p th:text="${#lists.size(members)} + ' 条档案'">0 条档案</p></div>
+            <div><h2>全部党员</h2><p th:text="${resultTotal} + ' 条档案'">0 条档案</p></div>
             <button class="button primary add-member-button" type="button" data-open-member-modal><span class="button-icon">＋</span>新增党员</button>
         </div>
 
@@ -41,7 +41,7 @@
             <div class="filter-actions"><button class="button primary" type="submit">查询</button><a class="button ghost" href="/members">重置</a></div>
         </form>
 
-        <div class="table-summary"><span>党员名册</span><span class="summary-filter" th:if="${keyword != '' or selectedStatus != ''}">已应用筛选</span><span class="summary-filter" th:unless="${keyword != '' or selectedStatus != ''}">全部记录</span></div>
+        <div class="table-summary"><span>党员名册</span><span class="summary-filter" th:if="${keyword != '' or selectedStatus != ''}">已应用筛选</span><span class="summary-filter" th:unless="${keyword != '' or selectedStatus != ''}">全部记录</span><span class="summary-count" th:text="${resultTotal == 0 ? '共 0 名' : '显示 ' + pageStart + '–' + pageEnd + '，共 ' + resultTotal + ' 名'}">显示 1–10，共 0 名</span></div>
         <div class="table-wrap member-table-wrap">
             <table class="member-table">
                 <thead><tr><th>党员</th><th>当前状态</th><th>联系方式</th><th>入党申请</th><th>成为预备党员</th><th>转正日期</th><th class="operation-column">操作</th></tr></thead>
@@ -56,6 +56,11 @@
                 </tbody>
             </table>
         </div>
+        <nav class="member-pagination" th:if="${totalPages > 1}" aria-label="党员档案分页">
+            <a class="pagination-button" th:classappend="${currentPage == 1 ? ' disabled' : ''}" th:href="@{/members(page=${currentPage - 1},keyword=${keyword},status=${selectedStatus})}" th:aria-disabled="${currentPage == 1}">上一页</a>
+            <span class="pagination-pages"><a th:each="number : ${#numbers.sequence(1, totalPages)}" class="pagination-page" th:classappend="${number == currentPage ? ' is-current' : ''}" th:href="@{/members(page=${number},keyword=${keyword},status=${selectedStatus})}" th:text="${number}">1</a></span>
+            <a class="pagination-button" th:classappend="${currentPage == totalPages ? ' disabled' : ''}" th:href="@{/members(page=${currentPage + 1},keyword=${keyword},status=${selectedStatus})}" th:aria-disabled="${currentPage == totalPages}">下一页</a>
+        </nav>
     </section>
 </main>
 
