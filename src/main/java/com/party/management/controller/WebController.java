@@ -48,8 +48,10 @@ public class WebController {
     public String members(@RequestParam(name = "keyword", required = false) String keyword,
                           @RequestParam(name = "status", required = false) String status,
                           @RequestParam(name = "page", defaultValue = "1") int page,
+                          @RequestParam(name = "pageSize", defaultValue = "10") int requestedPageSize,
                           Model model) {
-        final int pageSize = 10;
+        final List<Integer> pageSizeOptions = List.of(10, 20, 50);
+        final int pageSize = pageSizeOptions.contains(requestedPageSize) ? requestedPageSize : 10;
         String selectedKeyword = keyword == null ? "" : keyword.trim();
         String selectedStatus = status == null ? "" : status.trim();
         long resultTotal = service.countMembers(selectedKeyword, selectedStatus);
@@ -64,6 +66,7 @@ public class WebController {
         model.addAttribute("currentPage", currentPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageSizeOptions", pageSizeOptions);
         model.addAttribute("pageStart", pageStart);
         model.addAttribute("pageEnd", pageEnd);
         model.addAttribute("member", new Member());
@@ -92,7 +95,8 @@ public class WebController {
         model.addAttribute("resultTotal", memberTotal);
         model.addAttribute("currentPage", 1);
         model.addAttribute("totalPages", 1);
-        model.addAttribute("pageSize", memberTotal);
+        model.addAttribute("pageSize", 10);
+        model.addAttribute("pageSizeOptions", List.of(10, 20, 50));
         model.addAttribute("pageStart", memberTotal == 0 ? 0 : 1);
         model.addAttribute("pageEnd", memberTotal);
         model.addAttribute("member", member);

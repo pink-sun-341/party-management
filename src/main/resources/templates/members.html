@@ -36,6 +36,7 @@
         </div>
 
         <form action="/members" method="get" class="member-filters">
+            <input type="hidden" name="pageSize" th:value="${pageSize}">
             <label class="filter-search"><span>搜索</span><span class="search-control"><span class="search-icon">⌕</span><input name="keyword" th:value="${keyword}" placeholder="搜索姓名或联系方式"></span></label>
             <label><span>党员状态</span><select name="status"><option value="" th:selected="${selectedStatus == ''}">全部状态</option><option value="正式党员" th:selected="${selectedStatus == '正式党员'}">正式党员</option><option value="预备党员" th:selected="${selectedStatus == '预备党员'}">预备党员</option><option value="发展对象" th:selected="${selectedStatus == '发展对象'}">发展对象</option><option value="积极分子" th:selected="${selectedStatus == '积极分子'}">积极分子</option><option value="入党申请人" th:selected="${selectedStatus == '入党申请人'}">入党申请人</option></select></label>
             <div class="filter-actions"><button class="button primary" type="submit">查询</button><a class="button ghost" href="/members">重置</a></div>
@@ -56,10 +57,15 @@
                 </tbody>
             </table>
         </div>
-        <nav class="member-pagination" th:if="${totalPages > 1}" aria-label="党员档案分页">
-            <a class="pagination-button" th:classappend="${currentPage == 1 ? ' disabled' : ''}" th:href="@{/members(page=${currentPage - 1},keyword=${keyword},status=${selectedStatus})}" th:aria-disabled="${currentPage == 1}">上一页</a>
-            <span class="pagination-pages"><a th:each="number : ${#numbers.sequence(1, totalPages)}" class="pagination-page" th:classappend="${number == currentPage ? ' is-current' : ''}" th:href="@{/members(page=${number},keyword=${keyword},status=${selectedStatus})}" th:text="${number}">1</a></span>
-            <a class="pagination-button" th:classappend="${currentPage == totalPages ? ' disabled' : ''}" th:href="@{/members(page=${currentPage + 1},keyword=${keyword},status=${selectedStatus})}" th:aria-disabled="${currentPage == totalPages}">下一页</a>
+        <nav class="member-pagination" th:if="${resultTotal > 0}" aria-label="党员档案分页">
+            <span class="pagination-summary" th:text="${'共 ' + resultTotal + ' 条 · 第 ' + currentPage + ' / ' + totalPages + ' 页'}">共 0 条 · 第 1 / 1 页</span>
+            <form class="page-size-form" action="/members" method="get">
+                <input type="hidden" name="keyword" th:value="${keyword}"><input type="hidden" name="status" th:value="${selectedStatus}"><input type="hidden" name="page" value="1">
+                <label>每页 <select name="pageSize" onchange="this.form.submit()"><option th:each="size : ${pageSizeOptions}" th:value="${size}" th:text="${size} + ' 条'" th:selected="${size == pageSize}">10 条</option></select></label>
+            </form>
+            <a class="pagination-button" th:classappend="${currentPage == 1 ? ' disabled' : ''}" th:href="@{/members(page=${currentPage - 1},pageSize=${pageSize},keyword=${keyword},status=${selectedStatus})}" th:aria-disabled="${currentPage == 1}">上一页</a>
+            <span class="pagination-pages"><a th:each="number : ${#numbers.sequence(1, totalPages)}" class="pagination-page" th:classappend="${number == currentPage ? ' is-current' : ''}" th:href="@{/members(page=${number},pageSize=${pageSize},keyword=${keyword},status=${selectedStatus})}" th:text="${number}">1</a></span>
+            <a class="pagination-button" th:classappend="${currentPage == totalPages ? ' disabled' : ''}" th:href="@{/members(page=${currentPage + 1},pageSize=${pageSize},keyword=${keyword},status=${selectedStatus})}" th:aria-disabled="${currentPage == totalPages}">下一页</a>
         </nav>
     </section>
 </main>
