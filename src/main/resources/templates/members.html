@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>党员档案 | 党支部管理系统</title>
     <link rel="stylesheet" href="/css/app.css">
-    <link rel="stylesheet" href="/css/members.css?v=20261026-2">
+    <link rel="stylesheet" href="/css/members.css?v=20261028-1">
 </head>
 <body class="members-page">
 <header class="topbar">
@@ -13,8 +13,8 @@
     <nav>
         <a href="/">工作台</a>
         <a class="active" href="/members">党员档案</a>
-        <a href="/activities">组织生活</a>
-        <a href="/meetings">会议纪要</a>
+        <a href="/activities">党支部会议</a>
+        <a href="/meetings">信息技术部第六党支部台账</a>
     </nav>
     <div class="topbar-meta">党员工作台</div>
 </header>
@@ -47,8 +47,8 @@
             <table class="member-table">
                 <thead><tr><th>党员</th><th>当前状态</th><th>联系方式</th><th>入党申请</th><th>成为预备党员</th><th>转正日期</th><th class="operation-column">操作</th></tr></thead>
                 <tbody>
-                <tr th:each="item : ${members}" class="member-row" th:attr="data-id=${item.id},data-name=${item.name},data-gender=${item.gender},data-phone=${item.phone},data-status=${item.status},data-application-date=${item.applicationDate},data-activist-date=${item.activistDate},data-development-object-date=${item.developmentObjectDate},data-probationary-date=${item.probationaryDate},data-full-member-date=${item.fullMemberDate}">
-                    <td><div class="member-identity"><span class="avatar" th:text="${#strings.substring(item.name, 0, 1)}">党</span><span><b th:text="${item.name}">姓名</b><small th:text="${item.gender == null or item.gender == '' ? '性别未填写' : item.gender}">性别</small></span></div></td>
+                <tr th:each="item : ${members}" class="member-row" th:attr="data-id=${item.id},data-name=${item.name},data-gender=${item.gender},data-phone=${item.phone},data-status=${item.status},data-committee-member=${item.committeeMember},data-application-date=${item.applicationDate},data-activist-date=${item.activistDate},data-development-object-date=${item.developmentObjectDate},data-probationary-date=${item.probationaryDate},data-full-member-date=${item.fullMemberDate}">
+                    <td><div class="member-identity"><span class="avatar" th:text="${#strings.substring(item.name, 0, 1)}">党</span><span><b th:text="${item.name}">姓名</b><em class="committee-member-tag" th:if="${item.committeeMember}">支部委员</em><small th:text="${item.gender == null or item.gender == '' ? '性别未填写' : item.gender}">性别</small></span></div></td>
                     <td><span class="status-pill" th:classappend="${item.status == '正式党员' ? ' status-formal' : (item.status == '预备党员' ? ' status-probationary' : ' status-developing')}" th:text="${item.status}">状态</span></td>
                     <td class="muted-cell" th:text="${item.phone == null or item.phone == '' ? '未填写' : item.phone}">联系方式</td><td class="date-cell" th:text="${item.applicationDate == null ? '—' : item.applicationDate}">—</td><td class="date-cell" th:text="${item.probationaryDate == null ? '—' : item.probationaryDate}">—</td><td class="date-cell" th:text="${item.fullMemberDate == null ? '—' : item.fullMemberDate}">—</td>
                     <td class="row-actions"><button class="icon-button edit-member-button" type="button" title="编辑档案" aria-label="编辑档案">✎</button><form th:action="@{/members/{id}/delete(id=${item.id})}" method="post" onsubmit="return confirm('确定删除这条党员档案吗？删除后不可恢复，请先确认已完成备份。');"><button class="icon-button delete-action" type="submit" title="删除档案" aria-label="删除档案">⌫</button></form></td>
@@ -87,6 +87,6 @@
         </form>
     </section>
 </div>
-<script src="/js/members.js"></script>
+<script src="/js/members.js?v=20261028-1"></script>
 </body>
 </html>

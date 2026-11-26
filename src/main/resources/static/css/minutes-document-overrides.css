@@ -1,0 +1,5 @@
+.record-line{ text-indent:2em; }
+.section-label{ text-indent:0; }
+.record-body{ padding-left:0; text-indent:2em; }
+.record-title{ font-weight:700; }
+.record-body.numbered-paragraph{ text-indent:0; }

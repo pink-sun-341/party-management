@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>会议纪要 | 党支部管理系统</title>
+    <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/activity-minutes.css">
+</head>
+<body class="minutes-page">
+<header class="topbar">
+    <a class="brand" href="/">党支部管理系统 <span>支部工作台</span></a>
+    <nav><a href="/">工作台</a><a href="/members">党员档案</a><a class="active" href="/activities">党支部会议</a><a href="/meetings">信息技术部第六党支部台账</a></nav>
+    <div class="topbar-meta">信息技术部第六党支部台账</div>
+</header>
+
+<main class="minutes-shell">
+    <div class="minutes-heading">
+        <a class="minutes-back" href="/activities" aria-label="返回组织生活" title="返回组织生活">‹</a>
+        <div><p class="eyebrow">MEETING MINUTES</p><h1>会议纪要</h1><p class="minutes-subtitle">纪要将与本次组织生活记录关联保存。</p></div>
+        <span class="minutes-save-state" th:if="${activity.minutesSaved}">已有纪要</span>
+        <span class="minutes-save-state pending" th:unless="${activity.minutesSaved}">待补充</span>
+    </div>
+
+    <div class="minutes-layout">
+        <section class="minutes-editor">
+            <div class="editor-heading"><div><h2 th:text="${activity.title}">活动主题</h2><p th:text="${activity.type}">组织生活</p></div><span class="auto-fill-label">关联活动</span></div>
+            <div class="saved-notice" th:if="${saved}" role="status">纪要已保存。</div>
+            <form th:action="@{/activities/{id}/minutes(id=${activity.id})}" th:object="${minutes}" method="post">
+                <div class="minutes-field"><label for="content">第一议题学习</label><textarea id="content" th:field="*{content}" rows="8" placeholder="记录第一议题学习内容（可留空）"></textarea></div>
+                <div class="minutes-field"><label for="decisions">会议内容 <span>*</span></label><textarea id="decisions" th:field="*{decisions}" rows="4" required placeholder="记录会议讨论内容"></textarea></div>
+                <div class="minutes-actions"><a class="button ghost" th:href="${documentUrl}">查看文档</a><a class="button ghost" href="/activities">返回列表</a><button class="button primary" type="submit">保存纪要</button></div>
+            </form>
+        </section>
+
+        <aside class="minutes-context">
+            <div class="context-heading"><h2>关联活动信息</h2><span>自动带入</span></div>
+            <div class="context-row"><span>活动日期</span><strong th:text="${activity.activityDate == null ? '未填写' : #temporals.format(activity.activityDate, 'yyyy年M月d日')}">日期</strong></div>
+            <div class="context-row"><span>活动类型</span><strong th:text="${activity.type}">活动类型</strong></div>
+            <div class="context-row"><span>活动地点</span><strong th:text="${activity.location == null or activity.location.isBlank() ? '未填写' : activity.location}">活动地点</strong></div>
+            <div class="attendees-heading"><span>参与党员</span><strong th:text="${#lists.size(participants) + ' 人'}">0 人</strong></div>
+            <div class="attendee-list" th:if="${!#lists.isEmpty(participants)}">
+                <span class="attendee" th:each="person : ${participants}" th:text="${person.name}">党员姓名</span>
+            </div>
+            <div class="attendees-empty" th:if="${#lists.isEmpty(participants)}">这条活动记录尚未登记参与人。</div>
+            <div class="attendees-heading excused-heading"><span>请假党员</span><strong th:text="${#lists.size(excusedMembers) + ' 人'}">0 人</strong></div>
+            <div class="attendee-list" th:if="${!#lists.isEmpty(excusedMembers)}">
+                <span class="attendee excused" th:each="person : ${excusedMembers}" th:text="${person.name}">党员姓名</span>
+            </div>
+            <div class="attendees-empty" th:if="${#lists.isEmpty(excusedMembers)}">暂无请假党员。</div>
+            <p class="context-hint">支部委员会按已标记的支部委员计算请假名单，其它活动按正式、预备党员名单计算。请先在活动参与人中登记实际出席情况。</p>
+            <div class="last-saved" th:if="${minutes.updatedAt != null}">最近保存：<span th:text="${minutes.updatedAt}">时间</span></div>
+        </aside>
+    </div>
+</main>
+</body>
+</html>

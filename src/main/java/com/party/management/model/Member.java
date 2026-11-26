@@ -10,6 +10,7 @@ public class Member {
     private String gender;
     private String phone;
     private String status = "正式党员";
+    private boolean committeeMember;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate applicationDate;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
@@ -48,7 +49,9 @@ public class Member {
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
     public String getStatus() { return status; }
+    public boolean isCommitteeMember() { return committeeMember; }
     public void setStatus(String status) { this.status = status; }
+    public void setCommitteeMember(boolean value) { this.committeeMember = value; }
     public LocalDate getApplicationDate() { return applicationDate; }
     public void setApplicationDate(LocalDate value) { this.applicationDate = value; }
     public LocalDate getActivistDate() { return activistDate; }

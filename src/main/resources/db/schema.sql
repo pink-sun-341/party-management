@@ -53,3 +53,20 @@ CREATE TABLE IF NOT EXISTS meetings (
     decisions TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS activity_minutes (
+    activity_id INTEGER PRIMARY KEY,
+    content TEXT NOT NULL DEFAULT '',
+    decisions TEXT,
+    followups TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS committee_members (
+    member_id INTEGER PRIMARY KEY,
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO committee_members(member_id)
+SELECT id FROM members WHERE name IN ('章司怡', '王涛', '余茜玢', '常伟', '童怡玲');

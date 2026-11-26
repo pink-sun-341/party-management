@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const participantInputs = () => Array.from(document.querySelectorAll('#participant-form input[type="checkbox"]'));
     const memberSearchInputs = () => Array.from(document.querySelectorAll('[data-member-search]'));
     const memberSearchButtons = () => Array.from(document.querySelectorAll('[data-member-search-button]'));
+    const selectCommitteeButton = document.querySelector('[data-select-committee]');
+    const selectAllMembersButton = document.querySelector('[data-select-all-members]');
     const editorImageInput = document.querySelector('#activity-editor-images');
     const uploadImageInput = document.querySelector('#activity-images');
     const editorPreview = document.querySelector('#editor-image-preview-list');
@@ -338,6 +340,15 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         document.querySelector(`[data-member-search-button="${input.dataset.memberSearch}"]`)?.click();
     }));
+    memberSearchInputs().forEach((input) => input.addEventListener('input', () => applyMemberFilter(input)));
+    const selectEditorRoster = (predicate) => {
+        editorParticipantInputs().forEach((input) => { input.checked = predicate(input); });
+        if (editorStatus) {
+            editorStatus.textContent = `已选择 ${getCheckedIds(editorParticipantInputs()).length} 名党员。`;
+        }
+    };
+    selectCommitteeButton?.addEventListener('click', () => selectEditorRoster((input) => input.dataset.committeeMember === 'true'));
+    selectAllMembersButton?.addEventListener('click', () => selectEditorRoster(() => true));
     resetMemberFilters();
 
     editorImageInput?.addEventListener('change', (event) => {

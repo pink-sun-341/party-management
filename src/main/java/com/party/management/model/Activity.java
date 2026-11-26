@@ -14,6 +14,7 @@ public class Activity {
     private LocalDate activityDate;
     private String location;
     private Integer participantCount = 0;
+    private boolean minutesSaved;
     private List<Member> participants = new ArrayList<>();
 
     public Activity() {}
@@ -33,6 +34,7 @@ public class Activity {
     public LocalDate getActivityDate() { return activityDate; }
     public String getLocation() { return location; }
     public Integer getParticipantCount() { return participantCount; }
+    public boolean isMinutesSaved() { return minutesSaved; }
     public List<Member> getParticipants() { return participants; }
     public void setId(Long value) { this.id = value; }
     public void setTitle(String value) { this.title = value; }
@@ -40,5 +42,6 @@ public class Activity {
     public void setActivityDate(LocalDate value) { this.activityDate = value; }
     public void setLocation(String value) { this.location = value; }
     public void setParticipantCount(Integer value) { this.participantCount = value; }
+    public void setMinutesSaved(boolean value) { this.minutesSaved = value; }
     public void setParticipants(List<Member> value) { this.participants = value == null ? new ArrayList<>() : value; }
 }

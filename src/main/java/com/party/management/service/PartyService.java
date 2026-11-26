@@ -1,6 +1,7 @@
 package com.party.management.service;
 
 import com.party.management.model.Activity;
+import com.party.management.model.ActivityMinutes;
 import com.party.management.model.ActivityFile;
 import com.party.management.model.Meeting;
 import com.party.management.model.Member;
@@ -50,6 +51,17 @@ public class PartyService {
         return repository.findActivities(startDate, endDate, type);
     }
     public Activity activity(long id) { return repository.findActivity(id); }
+    public List<Member> excusedMembers(Activity activity, List<Member> participants, List<Member> memberList) {
+        Set<Long> participantIds = participants.stream().map(Member::getId).collect(java.util.stream.Collectors.toSet());
+        return memberList.stream()
+                .filter(member -> "支部委员会".equals(activity.getType())
+                        ? member.isCommitteeMember()
+                        : "正式党员".equals(member.getStatus()) || "预备党员".equals(member.getStatus()))
+                .filter(member -> !participantIds.contains(member.getId()))
+                .toList();
+    }
+    public ActivityMinutes activityMinutes(long activityId) { return repository.findActivityMinutes(activityId); }
+    public void saveActivityMinutes(ActivityMinutes minutes) { repository.saveActivityMinutes(minutes); }
     public List<Member> activityParticipants(long activityId) { return repository.findActivityParticipants(activityId); }
     public List<ActivityFile> activityImages(long activityId) { return repository.findActivityImages(activityId); }
     public long addActivity(Activity activity) { return repository.saveActivity(activity); }
@@ -233,20 +245,154 @@ public class PartyService {
         }
     }
 
+    public byte[] generateActivityMinutesDocument() throws IOException {
+        List<Activity> activities = activities().stream()
+                .filter(Activity::isMinutesSaved)
+                .sorted(Comparator.comparing(Activity::getActivityDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Activity::getId))
+                .toList();
+        List<Member> memberList = members();
+        try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            addLedgerTitle(document, "信息技术部第六党支部台账");
+            for (int index = 0; index < activities.size(); index++) {
+                Activity activity = activities.get(index);
+                ActivityMinutes minutes = activityMinutes(activity.getId());
+                List<Member> participants = activityParticipants(activity.getId());
+                List<String> excused = excusedMembers(activity, participants, memberList).stream()
+                        .map(Member::getName).toList();
+                String meetingDate = activity.getActivityDate() == null ? "未填写" : activity.getActivityDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy年M月d日"));
+                String activityHeading = activity.getActivityDate() == null
+                        ? "信息技术部第六党支部" + activityTypeLabel(activity.getType())
+                        : "信息技术部第六党支部" + chineseMonth(activity.getActivityDate().getMonthValue()) + "月" + activityTypeLabel(activity.getType());
+                addHeading(document, chineseOrdinal(index + 1) + "、" + meetingDate + "，" + activityHeading);
+                addIndentedLine(document, "主题：" + value(activity.getTitle()));
+                addIndentedLine(document, "地点：" + value(activity.getLocation()));
+                String participantText = "支部委员会".equals(activity.getType())
+                        ? (participants.isEmpty() ? "未登记" : participants.stream().map(Member::getName).collect(java.util.stream.Collectors.joining("、")))
+                        : "总行机关信息技术部第六党支部全体党员";
+                addIndentedLine(document, "参会人员：" + participantText);
+                addIndentedLine(document, "请假人员：" + (excused.isEmpty() ? "无" : String.join("、", excused)));
+                if (minutes.getContent() != null && !minutes.getContent().isBlank()) {
+                    addPlainHeading(document, "一、第一议题学习：");
+                    addIndentedMultiline(document, minutes.getContent(), minutes);
+                }
+                if (minutes.getDecisions() != null && !minutes.getDecisions().isBlank()) {
+                    addPlainHeading(document, minutes.getContent() == null || minutes.getContent().isBlank() ? "一、内容：" : "二、内容：");
+                    addIndentedMultiline(document, minutes.getDecisions(), minutes);
+                }
+                if (index < activities.size() - 1) addRecordGap(document);
+            }
+            document.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private static String chineseOrdinal(int number) {
+        String[] digits = {"零", "一", "二", "三", "四", "五", "六", "七", "八", "九"};
+        if (number < 10) return digits[number];
+        if (number < 20) return "十" + (number == 10 ? "" : digits[number % 10]);
+        if (number < 100) return digits[number / 10] + "十" + (number % 10 == 0 ? "" : digits[number % 10]);
+        return Integer.toString(number);
+    }
+
+    private static String activityTypeLabel(String type) {
+        if (type == null || type.isBlank()) return "组织生活活动";
+        if ("主题党日".equals(type)) return "党日活动";
+        return type;
+    }
+
+    private static String chineseMonth(int month) {
+        String[] digits = {"零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"};
+        return month >= 1 && month <= 12 ? digits[month] : Integer.toString(month);
+    }
+
+    private static void addMultiline(XWPFDocument document, String text) {
+        if (text == null || text.isBlank()) {
+            addLine(document, "（未填写）");
+            return;
+        }
+        for (String line : text.split("\\R", -1)) addLine(document, line);
+    }
+
+    private static void addIndentedMultiline(XWPFDocument document, String text, ActivityMinutes minutes) {
+        if (text == null || text.isBlank()) {
+            addIndentedLine(document, "（未填写）");
+            return;
+        }
+        for (String line : text.split("\\R", -1)) {
+            if (minutes.isNumberedParagraph(line)) addLine(document, line);
+            else addIndentedLine(document, line);
+        }
+    }
+
     private static void addTitle(XWPFDocument document, String text) {
         XWPFParagraph paragraph = document.createParagraph();
         paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.CENTER);
-        paragraph.createRun().setText(text);
+        org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+        styleRun(run);
+        run.setText(text);
+    }
+
+    private static void addLedgerTitle(XWPFDocument document, String text) {
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.CENTER);
+        paragraph.setSpacingAfter(480);
+        org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+        styleRun(run, 20);
+        run.setBold(true);
+        run.setText(text);
+    }
+
+    private static void addRecordGap(XWPFDocument document) {
+        for (int line = 0; line < 2; line++) {
+            XWPFParagraph paragraph = document.createParagraph();
+            paragraph.setSpacingBefore(0);
+            paragraph.setSpacingAfter(0);
+            org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+            styleRun(run);
+            run.setText(" ");
+        }
     }
 
     private static void addHeading(XWPFDocument document, String text) {
         XWPFParagraph paragraph = document.createParagraph();
-        paragraph.createRun().setBold(true);
-        paragraph.createRun().setText(text);
+        org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+        styleRun(run);
+        run.setBold(true);
+        run.setText(text);
+    }
+
+    private static void addPlainHeading(XWPFDocument document, String text) {
+        XWPFParagraph paragraph = document.createParagraph();
+        org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+        styleRun(run);
+        run.setText(text);
     }
 
     private static void addLine(XWPFDocument document, String text) {
-        document.createParagraph().createRun().setText(text);
+        org.apache.poi.xwpf.usermodel.XWPFRun run = document.createParagraph().createRun();
+        styleRun(run);
+        run.setText(text);
+    }
+
+    private static void addIndentedLine(XWPFDocument document, String text) {
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setFirstLineIndent(480);
+        org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+        styleRun(run);
+        run.setText(text);
+    }
+
+    private static void styleRun(org.apache.poi.xwpf.usermodel.XWPFRun run) {
+        styleRun(run, 12);
+    }
+
+    private static void styleRun(org.apache.poi.xwpf.usermodel.XWPFRun run, int fontSize) {
+        run.setFontSize(fontSize);
+        run.setFontFamily("宋体");
+        run.setFontFamily("宋体", org.apache.poi.xwpf.usermodel.XWPFRun.FontCharRange.eastAsia);
+        run.setFontFamily("宋体", org.apache.poi.xwpf.usermodel.XWPFRun.FontCharRange.ascii);
+        run.setFontFamily("宋体", org.apache.poi.xwpf.usermodel.XWPFRun.FontCharRange.hAnsi);
     }
 
     private static String value(Object value) {

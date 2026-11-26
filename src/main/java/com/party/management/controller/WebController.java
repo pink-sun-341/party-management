@@ -1,6 +1,7 @@
 package com.party.management.controller;
 
 import com.party.management.model.Activity;
+import com.party.management.model.ActivityMinutes;
 import com.party.management.model.ActivityFile;
 import com.party.management.model.Meeting;
 import com.party.management.model.Member;
@@ -26,6 +27,8 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Comparator;
 
 @Controller
 public class WebController {
@@ -145,6 +148,32 @@ public class WebController {
         return "redirect:/activities";
     }
 
+    @GetMapping("/activities/{id}/minutes")
+    public String activityMinutes(@PathVariable("id") long id,
+                                  @RequestParam(name = "saved", defaultValue = "false") boolean saved,
+                                  Model model) {
+        Activity activity = service.activity(id);
+        if (activity == null) return "redirect:/activities";
+        model.addAttribute("activity", activity);
+        model.addAttribute("minutes", service.activityMinutes(id));
+        List<Member> participants = service.activityParticipants(id);
+        List<Member> excusedMembers = service.excusedMembers(activity, participants, service.members());
+        model.addAttribute("participants", participants);
+        model.addAttribute("excusedMembers", excusedMembers);
+        model.addAttribute("saved", saved);
+        model.addAttribute("documentUrl", "/meetings#activity-" + id);
+        return "activity-minutes";
+    }
+
+    @PostMapping("/activities/{id}/minutes")
+    public String saveActivityMinutes(@PathVariable("id") long id,
+                                      @ModelAttribute ActivityMinutes minutes) {
+        if (service.activity(id) == null) return "redirect:/activities";
+        minutes.setActivityId(id);
+        service.saveActivityMinutes(minutes);
+        return "redirect:/meetings?updated=true#activity-" + id;
+    }
+
     @PostMapping("/api/activities")
     @ResponseBody
     public ResponseEntity<?> createActivity(@ModelAttribute Activity activity) {
@@ -253,11 +282,79 @@ public class WebController {
     }
 
     @GetMapping("/meetings")
-    public String meetings(Model model) {
-        model.addAttribute("meetings", service.meetings());
-        model.addAttribute("meeting", new Meeting());
+    public String meetings(@RequestParam(name = "updated", required = false) String updated,
+                           Model model) {
+        List<Activity> savedActivities = service.activities().stream()
+                .filter(Activity::isMinutesSaved)
+                .sorted(Comparator.comparing(Activity::getActivityDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Activity::getId))
+                .toList();
+        List<Member> memberList = service.members();
+        List<MinutesDocumentEntry> entries = new java.util.ArrayList<>();
+        for (int index = 0; index < savedActivities.size(); index++) {
+            Activity activity = savedActivities.get(index);
+            List<Member> participants = service.activityParticipants(activity.getId());
+            List<Member> excused = service.excusedMembers(activity, participants, memberList);
+            entries.add(new MinutesDocumentEntry(chineseOrdinal(index + 1), activity,
+                    service.activityMinutes(activity.getId()), participants, excused,
+                    excused.stream().map(Member::getName).collect(Collectors.joining("、")),
+                    "支部委员会".equals(activity.getType())
+                            ? (participants.isEmpty() ? "未登记" : participants.stream().map(Member::getName).collect(Collectors.joining("、")))
+                            : "总行机关信息技术部第六党支部全体党员",
+                    activityDateText(activity),
+                    activityHeading(activity),
+                    activity.getTitle() == null || activity.getTitle().isBlank() ? "未填写" : activity.getTitle(),
+                    activity.getLocation() == null || activity.getLocation().isBlank() ? "未填写" : activity.getLocation()));
+        }
+        model.addAttribute("entries", entries);
+        model.addAttribute("entryCount", entries.size());
+        model.addAttribute("updated", "true".equals(updated));
         return "meetings";
     }
+
+    @GetMapping("/meetings/minutes.docx")
+    public ResponseEntity<ByteArrayResource> downloadActivityMinutes() throws IOException {
+        byte[] content = service.generateActivityMinutesDocument();
+        String filename = URLEncoder.encode("信息技术部第六党支部台账.docx", StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                .contentLength(content.length)
+                .body(new ByteArrayResource(content));
+    }
+
+    private static String chineseOrdinal(int number) {
+        String[] digits = {"零", "一", "二", "三", "四", "五", "六", "七", "八", "九"};
+        if (number < 10) return digits[number];
+        if (number < 20) return "十" + (number == 10 ? "" : digits[number % 10]);
+        if (number < 100) return digits[number / 10] + "十" + (number % 10 == 0 ? "" : digits[number % 10]);
+        return Integer.toString(number);
+    }
+
+    private static String activityDateText(Activity activity) {
+        return activity.getActivityDate() == null ? "未填写" : activity.getActivityDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy年M月d日"));
+    }
+
+    private static String activityHeading(Activity activity) {
+        if (activity.getActivityDate() == null) return "信息技术部第六党支部" + activityTypeLabel(activity.getType());
+        return "信息技术部第六党支部" + chineseMonth(activity.getActivityDate().getMonthValue()) + "月" + activityTypeLabel(activity.getType());
+    }
+
+    private static String activityTypeLabel(String type) {
+        if (type == null || type.isBlank()) return "组织生活活动";
+        if ("主题党日".equals(type)) return "党日活动";
+        return type;
+    }
+
+    private static String chineseMonth(int month) {
+        String[] digits = {"零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"};
+        return month >= 1 && month <= 12 ? digits[month] : Integer.toString(month);
+    }
+
+    public record MinutesDocumentEntry(String ordinal, Activity activity, ActivityMinutes minutes,
+                                       List<Member> participants, List<Member> excusedMembers,
+                                       String excusedNames, String participantText,
+                                       String dateText, String headingText, String themeText, String locationText) {}
 
     @PostMapping("/meetings")
     public String addMeeting(@ModelAttribute Meeting meeting) {

@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         row.querySelector('.edit-member-button')?.addEventListener('click', () => openModal({
             id: row.dataset.id, name: row.dataset.name, gender: row.dataset.gender, phone: row.dataset.phone,
             status: row.dataset.status, applicationDate: row.dataset.applicationDate, activistDate: row.dataset.activistDate,
+            committeeMember: row.dataset.committeeMember === 'true',
             developmentObjectDate: row.dataset.developmentObjectDate, probationaryDate: row.dataset.probationaryDate,
             fullMemberDate: row.dataset.fullMemberDate
         }));

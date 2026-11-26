@@ -1,6 +1,7 @@
 package com.party.management.repository;
 
 import com.party.management.model.Activity;
+import com.party.management.model.ActivityMinutes;
 import com.party.management.model.ActivityFile;
 import com.party.management.model.Meeting;
 import com.party.management.model.Member;
@@ -43,10 +44,10 @@ public class PartyRepository {
     }
 
     public List<Member> findMembers(String keyword, String status, int offset, int limit) {
-        StringBuilder sql = new StringBuilder("SELECT * FROM members WHERE 1 = 1");
+        StringBuilder sql = new StringBuilder("SELECT m.*, EXISTS (SELECT 1 FROM committee_members cm WHERE cm.member_id = m.id) AS committee_member FROM members m WHERE 1 = 1");
         List<Object> args = new java.util.ArrayList<>();
         appendMemberFilters(sql, args, keyword, status);
-        sql.append(" ORDER BY name LIMIT ? OFFSET ?");
+        sql.append(" ORDER BY m.name LIMIT ? OFFSET ?");
         args.add(limit);
         args.add(offset);
         return jdbc.query(sql.toString(), (rs, rowNum) -> member(rs), args.toArray());
@@ -66,22 +67,21 @@ public class PartyRepository {
     }
 
     private static Member member(java.sql.ResultSet rs) throws java.sql.SQLException {
-        return new Member(rs.getLong("id"), rs.getString("name"), rs.getString("gender"),
+        Member member = new Member(rs.getLong("id"), rs.getString("name"), rs.getString("gender"),
                 rs.getString("phone"), rs.getString("status"), date(rs, "application_date"),
                 date(rs, "activist_date"), date(rs, "development_object_date"),
                 date(rs, "probationary_date"), date(rs, "full_member_date"));
+        member.setCommitteeMember(rs.getBoolean("committee_member"));
+        return member;
     }
 
     public Member findMember(long id) {
-        List<Member> members = jdbc.query("SELECT * FROM members WHERE id = ?", (rs, rowNum) -> new Member(
-                rs.getLong("id"), rs.getString("name"), rs.getString("gender"),
-                rs.getString("phone"), rs.getString("status"), date(rs, "application_date"),
-                date(rs, "activist_date"), date(rs, "development_object_date"),
-                date(rs, "probationary_date"), date(rs, "full_member_date")), id);
+        List<Member> members = jdbc.query("SELECT m.*, EXISTS (SELECT 1 FROM committee_members cm WHERE cm.member_id = m.id) AS committee_member FROM members m WHERE m.id = ?",
+                (rs, rowNum) -> member(rs), id);
         return members.isEmpty() ? null : members.get(0);
     }
 
-    public void saveMember(Member member) {
+    public long saveMember(Member member) {
         jdbc.update("""
                 INSERT INTO members(name, gender, phone, status, application_date, activist_date,
                     development_object_date, probationary_date, full_member_date)
@@ -90,10 +90,13 @@ public class PartyRepository {
                 sqlDate(member.getApplicationDate()), sqlDate(member.getActivistDate()),
                 sqlDate(member.getDevelopmentObjectDate()), sqlDate(member.getProbationaryDate()),
                 sqlDate(member.getFullMemberDate()));
+        long id = jdbc.queryForObject("SELECT last_insert_rowid()", Long.class);
+        setCommitteeMember(id, isFixedCommitteeMember(member.getName()));
+        return id;
     }
 
     public boolean updateMember(Member member) {
-        return jdbc.update("""
+        boolean updated = jdbc.update("""
                 UPDATE members SET name = ?, gender = ?, phone = ?, status = ?, application_date = ?,
                     activist_date = ?, development_object_date = ?, probationary_date = ?, full_member_date = ?
                 WHERE id = ?
@@ -101,9 +104,24 @@ public class PartyRepository {
                 sqlDate(member.getApplicationDate()), sqlDate(member.getActivistDate()),
                 sqlDate(member.getDevelopmentObjectDate()), sqlDate(member.getProbationaryDate()),
                 sqlDate(member.getFullMemberDate()), member.getId()) > 0;
+        if (updated) setCommitteeMember(member.getId(), isFixedCommitteeMember(member.getName()));
+        return updated;
+    }
+
+    private static boolean isFixedCommitteeMember(String name) {
+        return List.of("章司怡", "王涛", "余茜玢", "常伟", "童怡玲").contains(name);
+    }
+
+    public void setCommitteeMember(long memberId, boolean committeeMember) {
+        if (committeeMember) {
+            jdbc.update("INSERT OR IGNORE INTO committee_members(member_id) VALUES (?)", memberId);
+        } else {
+            jdbc.update("DELETE FROM committee_members WHERE member_id = ?", memberId);
+        }
     }
 
     public boolean deleteMember(long id) {
+        jdbc.update("DELETE FROM committee_members WHERE member_id = ?", id);
         return jdbc.update("DELETE FROM members WHERE id = ?", id) > 0;
     }
 
@@ -115,8 +133,10 @@ public class PartyRepository {
         StringBuilder sql = new StringBuilder("""
                 SELECT a.*, CASE WHEN EXISTS (SELECT 1 FROM activity_participants ap WHERE ap.activity_id = a.id)
                     THEN (SELECT COUNT(*) FROM activity_participants ap2 WHERE ap2.activity_id = a.id)
-                    ELSE a.participant_count END AS participant_total
-                FROM activities a WHERE 1 = 1
+                    ELSE a.participant_count END AS participant_total,
+                    EXISTS (SELECT 1 FROM activity_minutes am WHERE am.activity_id = a.id) AS minutes_saved
+                FROM activities a
+                WHERE 1 = 1
                 """);
         List<Object> args = new java.util.ArrayList<>();
         if (startDate != null && !startDate.isBlank()) {
@@ -140,6 +160,7 @@ public class PartyRepository {
                 SELECT a.*, CASE WHEN EXISTS (SELECT 1 FROM activity_participants ap WHERE ap.activity_id = a.id)
                     THEN (SELECT COUNT(*) FROM activity_participants ap2 WHERE ap2.activity_id = a.id)
                     ELSE a.participant_count END AS participant_total
+                    , EXISTS (SELECT 1 FROM activity_minutes am WHERE am.activity_id = a.id) AS minutes_saved
                 FROM activities a WHERE a.id = ?
                 """, (rs, rowNum) -> activity(rs), id);
         return activities.isEmpty() ? null : activities.get(0);
@@ -218,8 +239,30 @@ public class PartyRepository {
     public record ActivityFileRecord(Long id, Long activityId, String originalName, String storedPath, String fileType) {}
 
     private static Activity activity(java.sql.ResultSet rs) throws java.sql.SQLException {
-        return new Activity(rs.getLong("id"), rs.getString("title"), rs.getString("type"),
+        Activity activity = new Activity(rs.getLong("id"), rs.getString("title"), rs.getString("type"),
                 date(rs, "activity_date"), rs.getString("location"), rs.getInt("participant_total"));
+        activity.setMinutesSaved(rs.getBoolean("minutes_saved"));
+        return activity;
+    }
+
+    public ActivityMinutes findActivityMinutes(long activityId) {
+        List<ActivityMinutes> rows = jdbc.query("""
+                SELECT activity_id, content, decisions, followups, updated_at
+                FROM activity_minutes WHERE activity_id = ?
+                """, (rs, rowNum) -> new ActivityMinutes(rs.getLong("activity_id"),
+                rs.getString("content"), rs.getString("decisions"), rs.getString("followups"),
+                rs.getString("updated_at")), activityId);
+        return rows.isEmpty() ? new ActivityMinutes(activityId, "", "", "", null) : rows.get(0);
+    }
+
+    public void saveActivityMinutes(ActivityMinutes minutes) {
+        jdbc.update("""
+                INSERT INTO activity_minutes(activity_id, content, decisions, followups, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(activity_id) DO UPDATE SET content = excluded.content,
+                    decisions = excluded.decisions, followups = excluded.followups,
+                    updated_at = CURRENT_TIMESTAMP
+                """, minutes.getActivityId(), minutes.getContent(), minutes.getDecisions(), minutes.getFollowups());
     }
 
     public List<Meeting> findMeetings() {
